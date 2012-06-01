@@ -1,0 +1,7 @@
+
+name = UI Custom modules data types
+description = Provides the content types for Directories modules and Calendar modules
+package = UI Module Package
+core = 7.x
+files[] = uicustom.module
+dependencies[] = taxonomy

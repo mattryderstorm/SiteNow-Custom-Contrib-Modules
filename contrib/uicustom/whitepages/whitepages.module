@@ -1,0 +1,466 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * A module querying Whitepages for a list of department members.
+ *
+ * This module provides a block that lists all of the
+ * members of a specified dapartment. 
+ * 
+ */
+
+ //sets a couple default values
+define('WHITEPAGES_DEPTNUMBER', '5073');
+define('WHITEPAGES_HOST', 'directory.uiowa.edu');
+define('WHITEPAGES_PORT', 389);
+define('WHITEPAGES_CLEAR_NEVER', 0);
+define('WHITEPAGES_FILTER', '');
+ 
+ 
+
+ 
+/**
+ * Implements hook_help().
+ */
+function whitepages_help($path, $arg) {
+  if ($path == 'admin/help#whitepages') {
+    return t('A module to display members of a specified department.');
+  }
+}
+
+function whitepages_get_data($reset = FALSE) {
+  static $list;
+  if (!isset($list) || $reset) {
+    if (!$reset && ($cache = cache_get('whitepages_data')) && !empty($cache->data)) {
+      $list = unserialize($cache->data);    
+    } else {
+      $list = whitepages_load_db();
+      cache_set('whitepages_data', 'cache', serialize($list));
+    }
+  } 
+
+  return $list;
+
+}
+
+function whitepages_load_data() {
+
+  $deptnums = explode(',', variable_get('whitepages_deptnumber', WHITEPAGES_DEPTNUMBER));
+  $deptnums = array_trim($deptnums);
+  
+  $ldap_conn=ldap_connect(
+    variable_get('whitepages_host', WHITEPAGES_HOST), 
+    variable_get('whitepages_port', WHITEPAGES_PORT)
+  );
+  ldap_bind($ldap_conn);
+  $justthese=array('givenName', 'sn', 'title', 'uiowacampuspostaladdress', 'uiowaofficephone', 'mail', 'uiowadepartmentname');
+  $list = array();
+  foreach($deptnums as $dept) {
+    for($h=97; $h <=122; $h++) {
+            
+      $whitepagesLetter = chr($h);
+      $filter='(&(departmentnumber='.$dept.')(sn='.$whitepagesLetter.'*))';
+      $result=ldap_search($ldap_conn, 'ou=people,DC=metadirectory,DC=iowa,DC=uiowa,DC=edu', $filter, $justthese);
+      $info=ldap_get_entries($ldap_conn, $result);
+              
+      for($i=0; $i< $info['count']; $i++){
+        $givenname=addslashes($info[$i]['givenname'][0]);
+        $surname=$info[$i]['sn'][0];
+        $title=$info[$i]['title'][0];
+        $office=$info[$i]['uiowacampuspostaladdress'][0];
+        if (isset($info[$i]['uiowaofficephone'][0])) {
+          $phone=$info[$i]['uiowaofficephone'][0];
+        } else {
+          $phone = '';
+        }
+        $mail=$info[$i]['mail'][0];
+        if (isset($info[$i]['uiowadepartmentname'][0])) {
+          $deptname=$info[$i]['uiowadepartmentname'][0];
+        }
+        $filter_list = explode(" ", variable_get('whitepages_filter', WHITEPAGES_FILTER));
+        $unique_id = substr($givenname, 0, 1) . $surname;
+        if (!in_array(strtolower($unique_id), $filter_list)) {
+          
+          $group = ucwords(mb_strtolower(str_replace("ITS-", "", $deptname)));
+          $search = array("Cio", "Its Cts ", "Help Desk/cid");
+          $replace = array("CIO", "", "Enterprise Services");
+          $group = str_replace($search, $replace, $group);
+          
+          $items = array(
+            'lname' => $surname,
+            'fname' => $givenname, 
+            
+            'href' => 'http://web.its.uiowa.edu/peoplesearch/home.page?name=' .$givenname . '%20'. $surname,
+            'title' => $title,
+            'phone' => $phone,
+            'email' => $mail,
+            'office' => $office,
+            'dept' => $group,
+           );
+           array_push($list, $items);
+                  
+                  
+           }
+         }
+     }
+   }
+   ldap_unbind($ldap_conn);
+          
+   
+          
+   whitepages_entry_insert($list);
+            
+}
+
+
+
+function whitepages_quicksand_page() {
+  // We'll start building a renderable array that will be our page.
+  // For now we just declare the array.
+  $renderable_array = array();
+  // We query the database and find all of the nodes for the type we defined.
+  $sql = 'SELECT nid FROM {node} n WHERE n.type = :type AND n.status = :status';
+  $result = db_query($sql,
+    array(
+      ':type' => 'node_person',
+      ':status' => 1,
+    )
+  );
+  $renderable_array['explanation'] = array(
+    '#markup' => t("Quicksand JQuery plugin."));
+  drupal_add_js('(function ($) { 
+    $(document).ready(function() {
+
+      // get the action filter option item on page load
+      var $filterType = "all";
+      
+      // get and assign the ourHolder element to the
+      // $holder varible for use later
+      var $holder = $("#destination ul");
+
+      // clone all items within the pre-assigned $holder element
+      var $data = $holder.clone();
+
+      // attempt to call Quicksand when a filter option
+      // item is clicked
+      $("#source a").click(function(e) {
+        // reset the active class on all the buttons
+        $("#source a").removeClass("active");
+        
+        // assign the class of the clicked filter option
+        // element to our $filterType variable
+        var $filterType = $(this).attr("class");
+        $(this).parent().addClass("active");
+        
+        if ($filterType == "all") {
+          // assign all li items to the $filteredData var when
+          // the "All" filter option is clicked
+          var $filteredData = $data.find("li");
+        } 
+        else {
+          // find all li elements that have our required $filterType
+          // values for the data-type element
+          var $filteredData = $data.find("li[data-type=" + $filterType + "]");
+        }
+        
+        // call quicksand and assign transition parameters
+        $holder.quicksand($filteredData, {
+          duration: 800,
+          easing: "easeInOutQuad"
+        });
+        return false;
+      });
+    });
+  })(jQuery);',
+    array('type' => 'inline', 'scope' => 'footer', 'weight' => 5)
+  );
+
+  
+  $data = '';
+  foreach(range('A','Z') as $letter) {
+    $data .= '<a class="'. $letter . '" href="#">' . $letter . '</a>';
+    if ($letter != 'Z') $data .= ' | ';
+  }
+    $renderable_array['listhead']['#markup']= $data;
+      
+  $renderable_array['listhead']['#prefix'] = '<div id="source">';
+  $renderable_array['listhead']['#suffix'] = '</div>';
+  // Loop through each of our node_example nodes and instruct node_view
+  // to use our "example_node_list" view.
+  // http://api.drupal.org/api/function/node_load/7
+  // http://api.drupal.org/api/function/node_view/7
+  $count = 1;
+  foreach ($result as $row) {
+    $node = node_load($row->nid);
+    $item = '<div>' .    '<img typeof="foaf:Image" src="http://lamp-e.its.uiowa.edu/sites/default/files/default_images/fdf.png" alt="">' . '<br />' . 
+    $node->title . '</div>';
+    $renderable_array['list']['#items'][]= array(
+    
+      'data' => $item,
+      'data-type' => substr($node->title, 0, 1),   
+      'data-id' => 'id-' . $count  
+    );
+    $count += 1;
+  }
+  
+  $renderable_array['list']['#theme'] = 'item_list';
+  $renderable_array['list']['#prefix'] = '<div id="destination">';
+  $renderable_array['list']['#suffix'] = '</div>';
+  return $renderable_array;
+}
+
+
+/**
+ * Implements hook_menu().
+ */
+function whitepages_menu() {
+  $items = array();
+  
+  //path to config
+  $items['admin/config/people/whitepages'] = array(
+    'title' => 'whitepages',
+    'description' => 'config page for whitepages module',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('whitepages_form'),
+    'access arguments' => array('administer users'),
+    'type' => MENU_NORMAL_ITEM,
+  );
+  
+  //path to page view
+
+  $items['org/stafflist'] = array(
+    'title' => 'Staff listing',
+    'page callback' => 'whitepages_pageview',
+    'access callback' => TRUE,
+  ); 
+  $items['org/quicksand'] = array(
+    'title' => 'Quicksand',
+    'page callback' => 'whitepages_quicksand_page',
+    'access callback' => TRUE,
+  );
+  
+  return $items;
+}
+/**
+ *  This function makes sure new position types don't already exist
+ *  as Taxonomy terms before trying to add them
+ *
+ * @arg: $list -> array of people grabbed from ldap service
+ * Calls() to functions from the taxonomy api
+ */
+function whitepages_create_terms($list) {
+  $jobs = array();  
+  $vocabularies = taxonomy_get_vocabularies();
+  foreach($vocabularies as $voc) {
+    if ($voc->machine_name == 'job_rank') {
+      $vid = $voc->vid;
+    }
+  }
+  $existing = taxonomy_get_tree($vid);
+  //print_r($existing);
+  $loaded_terms = array();
+  foreach($existing as $job_rank) {           
+    $loaded_terms[] = $job_rank->name;     
+  }
+  foreach($list as $entry) {
+    if (!isset($jobs[$entry['title']])){
+        $jobs[$entry['title']] = False;
+    }
+  }
+  //print_r($loaded_terms);
+  if (!empty($loaded_terms)) {
+    foreach($jobs as $new_term => $val) {
+      //print_r($new_term);
+      if (!in_array($new_term, $loaded_terms)) {
+        taxonomy_term_save((object) array(
+          'name' => t($new_term),
+          'vid' => $vid,
+        )); 
+      }
+    }
+  }else { 
+    foreach($jobs as $new_term => $val) {
+      //print_r($new_term);
+      taxonomy_term_save((object) array(
+        'name' => t($new_term),
+        'vid' => $vid,
+      )); 
+    }
+  }
+}
+
+function whitepages_entry_insert($list) {
+  $nodes = array(
+      'saved' => 0,
+      'passed' => 0
+    );
+  whitepages_create_terms($list);
+  
+  
+  foreach($list as $entry) {
+    //dprint_r($entry);
+   
+      $name = t("@lname, @fname", array(
+        '@lname' => $entry['lname'],
+        '@fname' => $entry['fname']
+      ));
+
+    $node = new StdClass();
+    $node->type = 'node_person';
+    $node->language = LANGUAGE_NONE;
+    node_object_prepare($node);
+    $node->title = str_replace("\'", "'", $name);
+    //$node->body['und'][0]['value'] = $entry['dept'];
+    $node->ecv_user_phone['und'][0]['value'] = $entry['phone'];   
+    $node->ecv_dept_name['und'][0]['value'] = $entry['dept'];    
+    $node->ecv_office['und'][0]['value'] = $entry['office'];    
+    $rank_name = $entry['title'];    
+    $tid = db_query("SELECT tid FROM {taxonomy_term_data} WHERE name = :name ORDER BY tid DESC LIMIT 1", array(
+    ':name' => $rank_name,
+    ))->fetchField();
+    
+    if (!empty($tid)) {
+      $node->ecv_rank['und'][0]['tid'] = $tid;
+    }
+    $node->ecv_email['und'][0]['value'] = $entry['email'];   
+
+      
+      $query = new EntityFieldQuery;
+      $result = $query
+        ->entityCondition('entity_type', 'node')
+        ->propertyCondition('type', 'node_person')
+        ->propertyCondition('title', $name)
+        ->execute();
+        
+      //dprint_r($result);
+      if (empty($result)) {
+        node_submit($node);
+        node_save($node);
+        $nodes['saved'] += 1;
+      }else {
+        $nodes['passed'] += 1;
+      }
+    
+  }
+  drupal_set_message(t("@saved nodes created, @pass events skipped.", array(
+    '@saved' => $nodes['saved'], 
+    '@pass' => $nodes['passed'])
+  ));
+}
+
+
+/**
+ * Function to create page view
+ */
+function whitepages_pageview() {
+  
+  whitepages_load_data();
+
+  return 'test';
+}
+
+/**
+ * Form builder; Create and display the Whitepages configuration settings form.
+ */
+function whitepages_form($form, &$form_state) {
+  $available_tokens = 'Available variables are: ';
+  $tokens = token_info();
+  foreach ($tokens['tokens']['site'] as $key => $value) {
+    $site_tokens[] = '[site:' . $key .']';
+  }
+
+  foreach ($tokens['tokens']['user'] as $key => $value) {
+    $site_tokens[] = '[user:' . $key .']';
+  }
+  $available_tokens .= implode(', ', $site_tokens);
+
+  // Text field for the host address.
+  $form['whitepages_host'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('whitepages_host', WHITEPAGES_HOST),
+    '#title' => t('Target Host Address'),
+    '#size' => 100,
+    '#maxlength' => 120,
+    '#required' => TRUE,
+    '#description' => t('The address where the Directory info is held.'),
+  );
+  
+  // Text field for the host port number.
+  $form['whitepages_port'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('whitepages_port', WHITEPAGES_PORT),
+    '#title' => t('Target Host Port'),
+    '#size' => 4,
+    '#maxlength' => 6,
+    '#required' => TRUE,
+    '#description' => t('The address where the Directory info is held.'),
+  );
+  
+  // Text field for the dept number.
+  $form['whitepages_deptnumber'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('whitepages_deptnumber', WHITEPAGES_DEPTNUMBER),
+    '#title' => t('Dept. Number'),
+    '#size' => 100,
+    '#maxlength' => 120,
+    '#required' => TRUE,
+    '#description' => t('The department number to be searched.'),
+  );
+ 
+  // textfield for filter list.
+  $form['whitepages_filter'] = array(
+    '#type' => 'textfield',
+    '#default_value' => variable_get('whitepages_filter', WHITEPAGES_FILTER),
+    '#title' => t('Filter List'),
+    '#size' => 60,
+    '#maxlength' => 120,
+    '#required' => FALSE,
+    '#description' => t('People to be filtered. Delineated by spaces. First letter of FNAME + LNAME. (eg. ecorson)'),
+  );
+ 
+ 
+  
+  
+  return system_settings_form($form);
+}
+
+/**
+ * Form submit handler. Save configuration settings for User Warn module.
+ */
+function whitepages_form_submit($form, &$form_state) {
+  
+  variable_set('whitepages_deptnumber', $form_state['values']['whitepages_deptnumber']);
+
+  variable_set('whitepages_filter', $form_state['values']['whitepages_filter']);  
+ 
+  drupal_set_message('The settings have been saved!  Run Cron for the changes to take effect.');
+}
+
+function whitepages_confirm_form($form, &$form_state, $uid) {
+  $form['account'] = array(
+    '#type' => 'value',
+    '#value' => user_load($uid),
+  );
+  
+  return confirm_form(
+    $form,
+    t('Are you sure you want to set a new department number?'),
+    'user/' . $uid,
+    t('This action can not be undone.'),
+    t('Do eeeet'),
+    t('Cancel')
+  );
+}
+function whitepages_cron() {
+  $return_value = db_delete('whitepages_depts')
+                       ->execute();
+  whitepages_load_data();
+}
+
+
+
+
+function array_trim( $array ) {
+    return array_map( 'trim', $array );
+  }

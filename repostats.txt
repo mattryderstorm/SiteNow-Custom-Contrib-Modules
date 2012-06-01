@@ -1,0 +1,231 @@
+# On branch master
+# Your branch is ahead of 'origin/master' by 2 commits.
+#
+# Changes not staged for commit:
+#   (use "git add <file>..." to update what will be committed)
+#   (use "git checkout -- <file>..." to discard changes in working directory)
+#
+#	modified:   contrib/addressfield/LICENSE.txt
+#	modified:   contrib/addressfield/addressfield.api.php
+#	modified:   contrib/addressfield/addressfield.css
+#	modified:   contrib/addressfield/addressfield.feeds.inc
+#	modified:   contrib/addressfield/addressfield.info
+#	modified:   contrib/addressfield/addressfield.install
+#	modified:   contrib/addressfield/addressfield.module
+#	modified:   contrib/addressfield/plugins/format/address.inc
+#	modified:   contrib/addressfield/plugins/format/name-full.inc
+#	modified:   contrib/addressfield/plugins/format/name-oneline.inc
+#	modified:   contrib/addressfield/plugins/format/organisation.inc
+#	modified:   contrib/addressfield/views/addressfield.views.inc
+#	modified:   contrib/addressfield/views/addressfield_views_handler_filter_country.inc
+#	modified:   contrib/admin_menu/CHANGELOG.txt
+#	modified:   contrib/admin_menu/LICENSE.txt
+#	modified:   contrib/admin_menu/README.txt
+#	modified:   contrib/admin_menu/admin_devel/admin_devel.js
+#	modified:   contrib/admin_menu/admin_menu-rtl.css
+#	modified:   contrib/admin_menu/admin_menu.api.php
+#	modified:   contrib/admin_menu/admin_menu.color.css
+#	modified:   contrib/admin_menu/admin_menu.css
+#	modified:   contrib/admin_menu/admin_menu.js
+#	modified:   contrib/admin_menu/admin_menu.uid1.css
+#	modified:   contrib/admin_menu/admin_menu_toolbar/admin_menu_toolbar.css
+#	modified:   contrib/admin_menu/admin_menu_toolbar/admin_menu_toolbar.js
+#	modified:   contrib/admin_menu/admin_views/admin_views.css
+#	modified:   contrib/ddblock/CHANGELOG.txt
+#	modified:   contrib/ddblock/INSTALL.txt
+#	modified:   contrib/ddblock/README.txt
+#	modified:   contrib/ddblock/css/ddblock.css
+#	modified:   contrib/ddblock/css/ddblock_instance_admin.css
+#	modified:   contrib/ddblock/ddblock-cycle-block-content.tpl.php
+#	modified:   contrib/ddblock/ddblock-cycle-pager-content.tpl.php
+#	modified:   contrib/ddblock/ddblock.class.php
+#	modified:   contrib/ddblock/js/ddblock.admin.js
+#	modified:   contrib/ddblock/js/ddblock.js
+#	modified:   contrib/ddblock/js/jquery.cycle.all.min.js
+#	modified:   contrib/ddblock/js/jquery.selectboxes.js
+#	modified:   contrib/ddblock/js/json2.pack.js
+#	modified:   contrib/devel/krumo/docs/Krumo/_class.krumo.php.html
+#	modified:   contrib/devel/krumo/docs/Krumo/krumo.html
+#	modified:   contrib/devel/krumo/docs/classtrees_Krumo.html
+#	modified:   contrib/features/CHANGELOG.txt
+#	modified:   contrib/features/README.txt
+#	modified:   contrib/features/features.admin.inc
+#	modified:   contrib/features/features.api.php
+#	modified:   contrib/features/features.css
+#	modified:   contrib/features/features.drush.inc
+#	modified:   contrib/features/features.export.inc
+#	modified:   contrib/features/features.info
+#	modified:   contrib/features/features.module
+#	modified:   contrib/features/includes/features.ctools.inc
+#	modified:   contrib/features/includes/features.image.inc
+#	modified:   contrib/features/includes/features.user.inc
+#	modified:   contrib/features/tests/features_test.features.field.inc
+#	modified:   contrib/features/tests/features_test.features.filter.inc
+#	modified:   contrib/features/tests/features_test.features.inc
+#	modified:   contrib/features/tests/features_test.features.user_permission.inc
+#	modified:   contrib/features/tests/features_test.info
+#	modified:   contrib/features/tests/features_test.views_default.inc
+#	modified:   contrib/features/theme/features-admin-components.tpl.php
+#	modified:   contrib/features/theme/theme.inc
+#	modified:   contrib/fusion_mobile/node.tpl.php
+#	modified:   contrib/fusion_mobile/page.tpl.php
+#	modified:   contrib/geofield/LICENSE.txt
+#	modified:   contrib/geofield/README.txt
+#	modified:   contrib/geofield/includes/behaviors/css/openlayers_behavior_geofield.css
+#	modified:   contrib/geofield/includes/behaviors/js/openlayers_behavior_geofield.js
+#	modified:   contrib/linkit_picker/linkit_picker.css
+#	modified:   contrib/linkit_picker/linkit_picker.js
+#	modified:   contrib/mailchimp/mailchimp.info
+#	modified:   contrib/mailchimp/modules/mailchimp_lists/mailchimp_lists.admin.inc
+#	modified:   contrib/mailchimp/modules/mailchimp_lists/mailchimp_lists.info
+#	modified:   contrib/mailchimp/modules/mailchimp_lists/mailchimp_lists.module
+#	modified:   contrib/mailchimp/modules/mailchimp_sts/mailchimp_sts.admin.inc
+#	modified:   contrib/mailchimp/modules/mailchimp_sts/mailchimp_sts.info
+#	modified:   contrib/openlayers/CHANGELOG.txt
+#	modified:   contrib/openlayers/LICENSE.txt
+#	modified:   contrib/openlayers/README.txt
+#	modified:   contrib/openlayers/docs/API.txt
+#	modified:   contrib/openlayers/docs/BEHAVIORS.txt
+#	modified:   contrib/openlayers/docs/CUSTOMIZATION.txt
+#	modified:   contrib/openlayers/docs/IE.txt
+#	modified:   contrib/openlayers/docs/JAVASCRIPT.txt
+#	modified:   contrib/openlayers/docs/KML.txt
+#	modified:   contrib/openlayers/docs/LAYER_TYPES.txt
+#	modified:   contrib/openlayers/docs/OPENLAYERS_VIEWS.txt
+#	modified:   contrib/openlayers/docs/RAW_LAYERS.txt
+#	modified:   contrib/openlayers/docs/openlayers.api.php
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_argparser.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_attribution.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_boxselect.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_cluster.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_dragpan.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_drawfeatures.css
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_drawfeatures.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_fullscreen.css
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_fullscreen.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_keyboarddefaults.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_layerswitcher.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_mapformvalues.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_mouseposition.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_navigation.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_panzoom.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_panzoombar.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_permalink.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_popup.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_scaleline.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_tooltip.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_zoombox.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_zoompanel.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_zoomtolayer.js
+#	modified:   contrib/openlayers/includes/behaviors/js/openlayers_behavior_zoomtomaxextent.js
+#	modified:   contrib/openlayers/includes/layer_types/js/cloudmade.js
+#	modified:   contrib/openlayers/includes/layer_types/js/google.js
+#	modified:   contrib/openlayers/includes/layer_types/js/kml.js
+#	modified:   contrib/openlayers/includes/layer_types/js/maptiler.js
+#	modified:   contrib/openlayers/includes/layer_types/js/osm.js
+#	modified:   contrib/openlayers/includes/layer_types/js/raw.js
+#	modified:   contrib/openlayers/includes/layer_types/js/tms.js
+#	modified:   contrib/openlayers/includes/layer_types/js/vector.js
+#	modified:   contrib/openlayers/includes/layer_types/js/virtualearth.js
+#	modified:   contrib/openlayers/includes/layer_types/js/wms.js
+#	modified:   contrib/openlayers/includes/layer_types/js/xyz.js
+#	modified:   contrib/openlayers/includes/layer_types/js/yahoo.js
+#	modified:   contrib/openlayers/js/openlayers.js
+#	modified:   contrib/openlayers/modules/openlayers_cck/includes/behaviors/js/openlayers_cck_vector_layer.js
+#	modified:   contrib/openlayers/modules/openlayers_cck/includes/openlayers_cck_map.tpl.php
+#	modified:   contrib/openlayers/modules/openlayers_cck/js/openlayers_cck.js
+#	modified:   contrib/openlayers/modules/openlayers_ui/js/openlayers_ui.presets.js
+#	modified:   contrib/openlayers/modules/openlayers_ui/openlayers_ui.css
+#	modified:   contrib/openlayers/modules/openlayers_views/includes/layer_types/openlayers_views_vector.js
+#	modified:   contrib/openlayers/modules/openlayers_views/views/openlayers-row-geometry.tpl.php
+#	modified:   contrib/openlayers/modules/openlayers_views/views/openlayers-views-map.tpl.php
+#	modified:   contrib/openlayers/openlayers.css
+#	modified:   contrib/openlayers/tests/js/harness.js
+#	modified:   contrib/openlayers/tests/js/index.html
+#	modified:   contrib/openlayers/tests/js/qunit.css
+#	modified:   contrib/openlayers/tests/js/qunit.js
+#	modified:   contrib/panels/templates/panels-add-content-link.tpl.php
+#	modified:   contrib/pathologic/pathologic.module
+#	modified:   contrib/phone/LICENSE.txt
+#	modified:   contrib/phone/README.int.txt
+#	modified:   contrib/phone/README.txt
+#	modified:   contrib/phone/countries.txt
+#	modified:   contrib/phone/theme/phone.css
+#	modified:   contrib/rotating_banner/includes/jquery.cycle.js
+#	modified:   contrib/rules/README.txt
+#	modified:   contrib/rules/includes/rules.core.inc
+#	modified:   contrib/rules/includes/rules.plugins.inc
+#	modified:   contrib/rules/includes/rules.processor.inc
+#	modified:   contrib/rules/includes/rules.state.inc
+#	modified:   contrib/rules/modules/data.eval.inc
+#	modified:   contrib/rules/modules/data.rules.inc
+#	modified:   contrib/rules/modules/entity.eval.inc
+#	modified:   contrib/rules/modules/entity.rules.inc
+#	modified:   contrib/rules/modules/events.inc
+#	modified:   contrib/rules/modules/path.eval.inc
+#	modified:   contrib/rules/modules/path.rules.inc
+#	modified:   contrib/rules/modules/rules_core.eval.inc
+#	modified:   contrib/rules/modules/rules_core.rules.inc
+#	modified:   contrib/rules/modules/system.eval.inc
+#	modified:   contrib/rules/modules/system.rules.inc
+#	modified:   contrib/rules/rules.api.php
+#	modified:   contrib/rules/rules.info
+#	modified:   contrib/rules/rules.install
+#	modified:   contrib/rules/rules.module
+#	modified:   contrib/rules/rules_admin/rules_admin.inc
+#	modified:   contrib/rules/rules_admin/rules_admin.info
+#	modified:   contrib/rules/rules_admin/rules_admin.module
+#	modified:   contrib/rules/rules_scheduler/rules_scheduler.info
+#	modified:   contrib/rules/rules_scheduler/rules_scheduler.module
+#	modified:   contrib/rules/rules_scheduler/rules_scheduler.rules.inc
+#	modified:   contrib/rules/tests/rules.test
+#	modified:   contrib/rules/tests/rules_test.info
+#	modified:   contrib/rules/ui/rules.ui.css
+#	modified:   contrib/rules/ui/ui.controller.inc
+#	modified:   contrib/rules/ui/ui.core.inc
+#	modified:   contrib/rules/ui/ui.data.inc
+#	modified:   contrib/rules/ui/ui.theme.inc
+#	modified:   contrib/strongarm/strongarm.info
+#	modified:   contrib/webform/components/date.inc
+#	modified:   contrib/webform/components/email.inc
+#	modified:   contrib/webform/components/fieldset.inc
+#	modified:   contrib/webform/components/file.inc
+#	modified:   contrib/webform/components/grid.inc
+#	modified:   contrib/webform/components/hidden.inc
+#	modified:   contrib/webform/components/markup.inc
+#	modified:   contrib/webform/components/pagebreak.inc
+#	modified:   contrib/webform/components/select.inc
+#	modified:   contrib/webform/components/textarea.inc
+#	modified:   contrib/webform/components/textfield.inc
+#	modified:   contrib/webform/components/time.inc
+#	modified:   contrib/webform/css/webform-admin.css
+#	modified:   contrib/webform/css/webform.css
+#	modified:   contrib/webform/includes/webform.components.inc
+#	modified:   contrib/webform/includes/webform.options.inc
+#	modified:   contrib/webform/includes/webform.pages.inc
+#	modified:   contrib/webform/includes/webform.report.inc
+#	modified:   contrib/webform/includes/webform.submissions.inc
+#	modified:   contrib/webform/js/webform-admin.js
+#	modified:   contrib/webform/tests/submission.test
+#	modified:   contrib/webform/tests/webform.test
+#	modified:   contrib/webform/views/webform.views.inc
+#	modified:   contrib/webform/views/webform_handler_field_submission_link.inc
+#	modified:   contrib/webform/webform.info
+#	modified:   contrib/webform/webform.install
+#	modified:   contrib/webform/webform.module
+#
+# Untracked files:
+#   (use "git add <file>..." to include in what will be committed)
+#
+#	contrib/date_ical/
+#	contrib/features/includes/features.locale.inc
+#	contrib/manual-crop/
+#	contrib/media/images/printer-wh.png
+#	contrib/rules/rules.make
+#	contrib/rules/rules_i18n/
+#	contrib/uicustom/
+#	contrib/webform/components/number.inc
+#	contrib/webform/webform.api.php
+#	contrib/webform_rules/
+#	repostats.txt
+no changes added to commit (use "git add" and/or "git commit -a")

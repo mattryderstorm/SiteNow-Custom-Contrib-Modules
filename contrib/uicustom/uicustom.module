@@ -1,0 +1,30 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * A module querying Whitepages for a list of department members.
+ *
+ * This module provides a block that lists all of the
+ * members of a specified dapartment. 
+ * 
+ */
+
+
+ 
+
+ 
+/**
+ * Implements hook_help().
+ */
+function uicustom_help($path, $arg) {
+  if ($path == 'admin/help#uicustom') {
+    return t('A module to display members of a specified department.');
+  }
+}
+
+
+
+
+
+
