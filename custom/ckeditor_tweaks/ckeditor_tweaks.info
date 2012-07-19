@@ -1,5 +1,0 @@
-name = CkEditor tweaks
-description = Automatically enables SCAYT
-package = UI Module Package
-core = 7.x
-dependencies[] = wysiwyg
