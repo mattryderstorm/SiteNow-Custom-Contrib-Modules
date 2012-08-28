@@ -19,6 +19,9 @@ function menu_workbench_access_info() {
       'access_type_id' => array_filter(variable_get('workbench_access_menu', array('main-menu'))),
       'description' => t('Uses the menu system for assigning hierarchical access control.'),
       'configuration' => 'menu_workbench_access_configuration',
+      'form_field' => 'menu',
+      'storage_column' => 'mlid',
+      'translatable' => FALSE,
       'node_table' => 'workbench_access_node',
       'query_field' => 'access_id',
       'field_table' => 'workbench_access_node',
@@ -169,6 +172,7 @@ function _workbench_access_menu_build_tree(&$tree, $link) {
  * Load data for a menu.
  */
 function menu_workbench_access_load($scheme) {
+  $data = array();
   // This might be a menu or a single menu item.
   if ($menu = menu_load($scheme['access_id'])) {
     $menu = (object) $menu;
@@ -178,8 +182,8 @@ function menu_workbench_access_load($scheme) {
       'description' => $menu->description,
     );
   }
-  else {
-    $item = (object) menu_link_load($scheme['access_id']);
+  elseif ($item = menu_link_load($scheme['access_id'])) {
+    $item = (object) $item;
     $data = array(
       'access_id' => $item->mlid,
       'name' => $item->link_title,
@@ -188,6 +192,7 @@ function menu_workbench_access_load($scheme) {
   }
   return $data;
 }
+
 
 /**
  * Implements hook_menu_delete().
