@@ -16,10 +16,10 @@ function workbench_media_menu() {
   $items['admin/workbench/media/add'] = array(
     'title' => 'Add Media',
     'page callback' => 'drupal_get_form',
-    'page arguments' => array('workbench_media_add'),
+    'page arguments' => array('file_entity_add_upload'),
     'access arguments' => array('use workbench_media add form'),
-    'file' => 'includes/media.pages.inc',
-    'file path' => drupal_get_path('module', 'media'),
+    'file' => 'file_entity.pages.inc',
+    'file path' => drupal_get_path('module', 'file_entity'),
     'type' => MENU_VISIBLE_IN_BREADCRUMB,
   );
 
@@ -49,7 +49,9 @@ function workbench_media_workbench_create_alter(&$output) {
       array(
         'title' => t('Upload Media'),
         'href' => 'admin/workbench/media/add',
-        'localized_options' => array(),
+        'localized_options' => array(
+          'query' => drupal_get_destination(),
+        ),
         'description' => t('Add photos, videos, audio, or other files to the site.'),
       )
     );
@@ -63,35 +65,43 @@ function workbench_media_workbench_create_alter(&$output) {
 }
 
 /**
- * Form callback for adding media.
- *
- * Uses Media's own upload form and adds a submit function.
- *
- * A wrapper function is used because:
- *   1. Using hook_form_alter() would require fragile logic to figure out when
- *   to alter the upload form.
- *   2. We may want to extend the media form functionality in the future.
+ * Implementation of hook_views_api().
  */
-function workbench_media_add($form, &$form_state) {
-  $form = drupal_get_form('media_add_upload', $form, $form_state);
-  $form['#submit'][] = 'workbench_media_add_submit';
-  return $form;
+function workbench_media_views_api() {
+  return array(
+    'api' => 3,
+  );
 }
 
 /**
- * Submit function for the media add form.
- *
- * Redirects to the uploaded media's edit form so that you can intuitively edit
- * fields on the new media item.
+ * Implementation of hook_views_default_views().
  */
-function workbench_media_add_submit($form, &$form_state) {
-  $dest = 'admin/workbench/files';
+function workbench_media_views_default_views() {
+  return workbench_load_all_exports('workbench_media', 'views', 'view.inc', 'view');
+}
 
-  // Was a file successfully uploaded?
-  if (!empty($form_state['values']['upload']->fid)) {
-    $form_state['redirect'] = array('media/' . $form_state['values']['upload']->fid . '/edit', array('query' => array('destination' => $dest)));
-  }
-  else {
-    $form_state['redirect'] = array($dest);
+/**
+ * Implementation of hook_preprocess_views_view_table().
+ *
+ * This is done to convert the "type" field to a thumbnail for image files.
+ */
+function workbench_media_preprocess_views_view_table(&$vars) {
+
+  // Custom handling for the workbench files view
+  if ($vars['view']->name == 'workbench_files') {
+    foreach ($vars['rows'] as $id => $row) {
+      // Is this file an image?
+      if (strstr(file_get_mimetype($row['uri']), 'image')) {
+        // Is this file on the local file system?
+        if (file_exists($row['uri_1'])) {
+          $row['filemime'] = theme('image_style', array(
+            'path' => $row['uri_1'],
+            'style_name' => 'thumbnail',
+          ));
+        }
+      }
+      // Assign the databack
+      $vars['rows'][$id] = $row;
+    }
   }
 }
