@@ -1,3 +1,11 @@
+Field_Redirection 7.x-2.5, 2012-11-03
+-------------------------------------
+#1728676 by DamienMcKenna: Support for File fields.
+#1778848 by DamienMcKenna: Support for URL fields.
+#1828180 by DamienMcKenna: Resolved conflict with the File Entity module.
+#1361806 by DamienMcKenna: Avoid redirects during cron.
+
+
 Field_Redirection 7.x-2.4, 2012-07-01
 -------------------------------------
 #1393162 by KarlShea: Incorrect use of drupal_goto() query string handling.

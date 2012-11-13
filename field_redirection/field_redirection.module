@@ -31,9 +31,11 @@ function field_redirection_field_formatter_info() {
       // The supported field types.
       'field types' => array(
         'entityreference',
+        'file',
         'link_field',
         'node_reference',
         'taxonomy_term_reference',
+        'url',
         'user_reference',
       ),
     ),
@@ -55,8 +57,11 @@ function field_redirection_field_formatter_settings_form($field, $instance, $vie
     $empty404 = TRUE;
   }
 
+  // Build a new structure for this formatter settings form element.
+  $element = array();
+
   // Choose the redirector.
-  $form['code'] = array(
+  $element['code'] = array(
     '#title' => 'HTTP status code',
     '#type' => 'select',
     '#options' => field_redirection_http_codes(),
@@ -64,14 +69,14 @@ function field_redirection_field_formatter_settings_form($field, $instance, $vie
   );
 
   // 404 if the field value is empty.
-  $form['404_if_empty'] = array(
+  $element['404_if_empty'] = array(
     '#type' => 'checkbox',
     '#title' => t('404 if URL empty'),
     '#default_value' => $empty404,
     '#description' => t('Optionally display a 404 error page if the associated URL field is empty.'),
   );
 
-  return $form;
+  return $element;
 }
 
 /**
@@ -119,6 +124,24 @@ function field_redirection_http_codes() {
  * If we have a node reference and we can redirect to it lets do it!
  */
 function field_redirection_field_formatter_view($entity_type, $entity, $field, $instance, $langcode, $items, $display) {
+  // Don't execute if running via the CLI, e.g. Drush.
+  if (constant('PHP_SAPI') == 'cli') {
+    return;
+  }
+  // Don't execute if the current page is running the normal cron script; this
+  // also supports Elysia Cron.
+  elseif (strpos($_SERVER['PHP_SELF'], 'cron.php') !== FALSE) {
+    return;
+  }
+  // The cron script is being executed from the admin status page.
+  elseif ($_GET['q'] == 'admin/reports/status/run-cron') {
+    return;
+  }
+  // Don't do anything during any MAINTENANCE_MODE.
+  elseif (defined('MAINTENANCE_MODE') || variable_get('maintenance_mode', 0)) {
+    return;
+  }
+
   // Make some of the rest of the code simpler.
   $item = !empty($items[0]) ? $items[0] : array();
   $response_code = !empty($display['settings']['code']) ? $display['settings']['code'] : 301;
@@ -129,14 +152,21 @@ function field_redirection_field_formatter_view($entity_type, $entity, $field, $
   $options = array();
   if (!empty($field['type'])) {
     switch ($field['type']) {
-      // Entity reference field.
+      // Entity reference field from the EntityReference module.
       case 'entityreference':
         if (!empty($item['target_id'])) {
           $path = drupal_get_path_alias($field['settings']['target_type'] . '/' . $item['target_id']);
         }
         break;
 
-      // Link field.
+      // File field from the core File module.
+      case 'file':
+        if (!empty($item['uri'])) {
+          $path = file_create_url($item['uri']);
+        }
+        break;
+
+      // Link field from the Link module.
       case 'link_field':
         if (!empty($item['url'])) {
           // The path is the URL field itself.
@@ -159,7 +189,8 @@ function field_redirection_field_formatter_view($entity_type, $entity, $field, $
         }
         break;
 
-      // Node reference field.
+      // Node reference field from the node_reference module, part of the
+      // References module.
       case 'node_reference':
       case 'node_reference_autocomplete':
         if (!empty($item['nid'])) {
@@ -168,7 +199,7 @@ function field_redirection_field_formatter_view($entity_type, $entity, $field, $
         }
         break;
 
-      // Term reference field.
+      // Term reference field from the core Taxonomy module.
       case 'taxonomy_term_reference':
       case 'taxonomy_term_reference_autocomplete':
         if (!empty($item['tid'])) {
@@ -177,7 +208,16 @@ function field_redirection_field_formatter_view($entity_type, $entity, $field, $
         }
         break;
 
-      // User reference field.
+      // URL field from the URL module.
+      case 'url':
+        if (!empty($item['path'])) {
+          $path = $item['path'];
+          $options = $item['options'];
+        }
+        break;
+
+      // User reference field from the user_reference module, part of the
+      // References module.
       case 'user_reference':
       case 'user_reference_autocomplete':
         if (!empty($item['uid'])) {
