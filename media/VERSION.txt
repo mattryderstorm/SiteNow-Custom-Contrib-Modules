@@ -1,4 +1,4 @@
 Media development version
 
 Last commit:
-http://drupalcode.org/project/media.git/commit/83c903dfa1ba6c3e9ed664b72e5270d91e40ef61
+http://drupalcode.org/project/media.git/commit/c49692be4b1e9990bf7b01a8db3ceb2943263d01
