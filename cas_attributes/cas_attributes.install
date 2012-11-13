@@ -45,3 +45,13 @@ function cas_attributes_requirements($phase) {
   }
   return $requirements;
 }
+
+function cas_attributes_update_7100() {
+  $attr = variable_get('cas_attributes', array());
+  if (array_key_exists('relations', $attr)) {
+    foreach ($attr['relations'] as $key => $value) {
+      $attr['relations'][$key] = preg_replace('/\[cas:attribute:([^:\?\]]*)]/', '[cas:attribute:$1:first]', $value);
+    }
+  }
+  variable_set('cas_attributes', $attr);
+}
