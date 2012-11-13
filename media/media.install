@@ -95,8 +95,11 @@ function media_update_dependencies() {
     'field' => 7002,
     'rules' => 7205,
   );
-  // This update requires {file_type} table created.
+  // Those updates require {file_type} table created.
   $dependencies['media'][7208] = array(
+    'file_entity' => 7201,
+  );
+  $dependencies['media'][7209] = array(
     'file_entity' => 7201,
   );
   return $dependencies;
@@ -763,8 +766,10 @@ function media_update_7204() {
  * Drop the unused {media_list_type} table.
  */
 function media_update_7205() {
-  db_drop_table('media_list_type');
-  return t('Dropped the unused {media_list_type} table.');
+  if (db_table_exists('media_list_type')) {
+    db_drop_table('media_list_type');
+    return t('Dropped the unused {media_list_type} table.');
+  }
 }
 
 /**
@@ -819,6 +824,10 @@ function media_update_7207() {
  * Drop the media_types table and migrate all files to the new file_entity types.
  */
 function media_update_7208() {
+  if (!db_table_exists('media_type')) {
+    // No types to migrate.
+    return;
+  }
   // @see http://drupal.org/node/1292382
   if (!function_exists('file_type_get_enabled_types')) {
     throw new DrupalUpdateException('The File Entity module needs to be upgraded before continuing.');
