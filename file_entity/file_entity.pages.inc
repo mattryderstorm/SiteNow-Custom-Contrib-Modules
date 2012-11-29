@@ -79,17 +79,24 @@ function file_entity_add_upload_submit($form, &$form_state) {
     return;
   }
 
-  // Redirect to the file edit page after submission.
-  if (file_entity_access('edit')) {
+  // Figure out destination.
+  if (isset($_GET['destination'])) {
+    $destination = drupal_get_destination();
+    unset($_GET['destination']);
+  }
+  elseif (user_access('administer files')) {
     $destination = array('destination' => 'admin/content/file');
-    if (isset($_GET['destination'])) {
-      $destination = drupal_get_destination();
-      unset($_GET['destination']);
-    }
+  }
+  else {
+    $destination = array('destination' => 'file/' . $file->fid);
+  }
+
+  // Redirect to the file edit page after submission.
+  if (file_entity_access('update', $file)) {
     $form_state['redirect'] = array('file/' . $file->fid . '/edit', array('query' => $destination));
   }
   else {
-    $form_state['redirect'] = 'admin/content/file';
+    $form_state['redirect'] = $destination['destination'];
   }
 }
 
@@ -134,13 +141,15 @@ function file_entity_add_upload_multiple($form, &$form_state, $params = array())
 }
 
 function file_entity_add_upload_multiple_submit($form, &$form_state) {
-  $scheme = variable_get('file_default_scheme', 'public') . '://';
+  $upload_location = !empty($form['upload']['#upload_location']) ?
+    $form['upload']['#upload_location'] . '/' :
+    variable_get('file_default_scheme', 'public') . '://';
 
   // We can't use file_save_upload() because of http://www.jacobsingh.name/content/tight-coupling-no-not
   foreach ($form_state['values']['upload'] as $uploaded_file) {
     if ($uploaded_file['status'] == 'done') {
       $source = $uploaded_file['tmppath'];
-      $destination = file_stream_wrapper_uri_normalize($scheme . $uploaded_file['name']);
+      $destination = file_stream_wrapper_uri_normalize($upload_location . $uploaded_file['name']);
       // Rename it to its original name, and put it in its final home.
       // Note - not using file_move here because if we call file_get_mime
       // (in file_uri_to_object) while it has a .tmp extension, it horks.
@@ -161,7 +170,7 @@ function file_entity_add_upload_multiple_submit($form, &$form_state) {
   }
 
   // Redirect to the file edit page.
-  if (file_entity_access('edit') && module_exists('multiform')) {
+  if (file_entity_access('update', $file) && module_exists('multiform')) {
     $destination = array('destination' => 'admin/content/file');
     if (isset($_GET['destination'])) {
       $destination = drupal_get_destination();
@@ -230,11 +239,7 @@ function file_entity_edit($form, &$form_state, $file) {
     );
   }
 
-  $form['preview'] = array(
-    '#theme' => 'file_link',
-    '#file' => $file,
-    '#weight' => -5,
-  );
+  $form['preview'] = file_view_file($file, 'preview');
 
   // Add the buttons.
   $form['actions'] = array('#type' => 'actions');
@@ -257,7 +262,8 @@ function file_entity_edit($form, &$form_state, $file) {
     '#weight' => 15,
   );
 
-  field_attach_form('file', $file, $form, $form_state);
+  $langcode = function_exists('entity_language') ? entity_language('file', $file) : NULL;
+  field_attach_form('file', $file, $form, $form_state, $langcode);
 
   return $form;
 }
@@ -302,7 +308,7 @@ function file_entity_edit_submit($form, &$form_state) {
   file_save($file);
 
   $args = array(
-    '@type' => file_type_get_name($file),
+    '@type' => file_entity_type_get_name($file),
     '%title' => entity_label('file', $file),
   );
   watchdog('file', '@type: updated %title.', $args);
@@ -334,7 +340,7 @@ function file_entity_edit_delete_submit($form, &$form_state) {
  *
  * @see file_entity_menu()
  */
-function file_delete_form($form, &$form_state, $file) {
+function file_entity_delete_form($form, &$form_state, $file) {
   $form_state['file'] = $file;
 
   $form['fid'] = array(
@@ -358,16 +364,16 @@ function file_delete_form($form, &$form_state, $file) {
 }
 
 /**
- * Form submission handler for file_delete_form().
+ * Form submission handler for file_entity_delete_form().
  */
-function file_delete_form_submit($form, &$form_state) {
+function file_entity_delete_form_submit($form, &$form_state) {
   if ($form_state['values']['confirm'] && $file = file_load($form_state['values']['fid'])) {
     // Use file_delete_multiple() rather than file_delete() since we want to
     // avoid unwanted validation and usage checking.
     file_delete_multiple(array($file->fid));
 
     $args = array(
-      '@type' => file_type_get_name($file),
+      '@type' => file_entity_type_get_name($file),
       '%title' => entity_label('file', $file),
     );
     watchdog('file', '@type: deleted %title.', $args);
@@ -382,10 +388,8 @@ function file_delete_form_submit($form, &$form_state) {
  *
  * @param array $files
  *   An array of file objects.
- *
- * @todo Rename this form to file_delete_form to ease into core.
  */
-function file_multiple_delete_form($form, &$form_state, array $files) {
+function file_entity_multiple_delete_form($form, &$form_state, array $files) {
   $form['files'] = array(
     '#prefix' => '<ul>',
     '#suffix' => '</ul>',
@@ -431,9 +435,9 @@ function file_multiple_delete_form($form, &$form_state, array $files) {
 }
 
 /**
- * Form submission handler for file_multiple_delete_form().
+ * Form submission handler for file_entity_multiple_delete_form().
  */
-function file_multiple_delete_form_submit($form, &$form_state) {
+function file_entity_multiple_delete_form_submit($form, &$form_state) {
   if ($form_state['values']['confirm'] && $fids = array_keys($form_state['values']['files'])) {
     file_delete_multiple($fids);
     $count = count($fids);
@@ -458,10 +462,10 @@ function file_entity_page_edit($file) {
  * Page callback for the file deletion confirmation form.
  *
  * @deprecated
- *   Use drupal_get_form('file_delete_form')
+ *   Use drupal_get_form('file_entity_delete_form')
  */
 function file_entity_page_delete($file) {
-  return drupal_get_form('file_delete_form');
+  return drupal_get_form('file_entity_delete_form');
 }
 
 /**
@@ -484,7 +488,7 @@ function file_entity_get_upload_validators(array $options = array()) {
     $validators['file_validate_extensions'] = array($options['file_extensions']);
   }
   else {
-    $validators['file_validate_extensions'] = array(FILE_DEFAULT_ALLOWED_EXTENSIONS);
+    $validators['file_validate_extensions'] = array(FILE_ENTITY_DEFAULT_ALLOWED_EXTENSIONS);
   }
 
   // Validate file size but do not allow anything higher than file_upload_max_size().

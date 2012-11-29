@@ -1,11 +1,11 @@
 Field Redirection
 *****************
 
-A field formatter for EntityReference, Link, Term Reference, Node Reference and
-User Reference fields that will perform a HTTP redirect to the given entity,
-URL, term, node or user.  The formatter's settings allow selection from one of
-the seven different possible HTTP status codes that are allowed by the
-specifications.
+A field formatter for EntityReference, File, Link, Node Reference, Term
+Reference, URL and User Reference fields that will perform a HTTP redirect to
+the given entity, file, URL, term, node, URL or user.  The formatter's settings
+allow selection from one of the seven different possible HTTP status codes that
+are allowed by the specifications.
 
 Example Usage
 *************
@@ -100,9 +100,8 @@ fields or deal with migration of D6 data.
 
 Author
 ******
-The current maintainer is DamienMcKenna [5]. Development is currently
-sponsored by Media Current [6] while initial development was sponsored by
-Bluespark Labs [7].
+The module was written and is maintained by DamienMcKenna [5]. Development is
+currently sponsored by Mediacurrent [6].
 
 
 1: http://drupal.org/project/cck_redirection
@@ -111,4 +110,3 @@ Bluespark Labs [7].
 4: http://drupal.org/node/1098250
 5: http://drupal.org/user/108450
 6: http://www.mediacurrent.com/
-7: http://www.bluesparklabs.com/

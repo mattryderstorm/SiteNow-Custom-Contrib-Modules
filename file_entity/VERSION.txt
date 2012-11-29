@@ -1,0 +1,4 @@
+File Entity Development Version
+
+Last commit:
+http://drupalcode.org/project/file_entity.git/commit/945bf90b283ef56a48bdb5a7597ac7cfcbf74809

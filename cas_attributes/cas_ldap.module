@@ -38,8 +38,10 @@ function cas_ldap_form_cas_attributes_admin_settings_alter(&$form, &$form_state,
   );
   $ldap_servers = ldap_servers_get_servers(NULL, 'enabled');
   $options = array();
-  foreach ($ldap_servers as $sid => $ldap_server) {
-    $options[$sid] = $ldap_server->name;
+  if ($ldap_servers) {
+    foreach ($ldap_servers as $sid => $ldap_server) {
+      $options[$sid] = $ldap_server->name;
+    }
   }
   $form['cas_attributes']['ldap']['server'] = array(
     '#type' => 'select',

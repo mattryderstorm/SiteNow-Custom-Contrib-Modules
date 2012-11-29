@@ -11,7 +11,7 @@
 function cas_attributes_admin_settings() {
   // Get current settings, and add default options.
   $cas_attributes = variable_get('cas_attributes', array());
-  $cas_attributes += array('sync_every_login' => NULL, 'relations' => array('mail' => NULL, 'name' => NULL));
+  $cas_attributes += array('overwrite' => TRUE, 'sync_every_login' => NULL, 'relations' => array('mail' => NULL, 'name' => NULL), 'roles' => array('manage' => array(), 'mapping' => ''));
   $relations = $cas_attributes['relations'];
 
   $form['cas_attributes'] = array(
@@ -28,6 +28,17 @@ function cas_attributes_admin_settings() {
       1 => 'every time a CAS user logs in.'
     ),
     '#weight' => -10,
+  );
+
+  $form['cas_attributes']['overwrite'] = array(
+    '#type' => 'radios',
+    '#title' => t('Overwrite existing values'),
+    '#default_value' => $cas_attributes['overwrite'],
+    '#options' => array(
+      0 => 'only store data from attributes for fields that are empty (don\'t overwrite user fields that already have data).',
+      1 => 'always store data from attributes (overwrite user fields that already have data).',
+    ),
+    '#weight' => -9,
   );
 
   $form['cas_attributes']['relations'] = array(
@@ -69,18 +80,38 @@ function cas_attributes_admin_settings() {
     }
   }
 
-  if (module_exists('token')) {
-    $form['token_tree'] = array(
-      '#theme' => 'token_tree',
-      '#token_types' => array('cas'),
-      '#global_types' => FALSE,
-    );
-  }
-  else {
-    $form['token_tree'] = array(
-      '#markup' => '<p>' . t('Enable the <a href="@drupal-token">Token module</a> to view the available token browser.', array('@drupal-token' => 'http://drupal.org/project/token')) . '</p>',
-    );
-  }
+  // Role Management
+  $managed_roles = $cas_attributes['roles'];
+  $form['cas_attributes']['roles'] = array(
+    '#type' => 'fieldset',
+    '#title' => 'Role Mapping',
+    '#access' => user_access('administer permissions'),
+  );
+
+  $roles = user_roles(TRUE);
+  unset($roles[DRUPAL_AUTHENTICATED_RID]);
+  asort($roles);
+
+  $form['cas_attributes']['roles']['manage'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Roles to manage'),
+    '#description' => t('Which roles should be managed by these attributes.'),
+    '#default_value' => $managed_roles['manage'],
+    '#options' => $roles,
+  );
+
+  $form['cas_attributes']['roles']['mapping'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Attributes'),
+    '#description' => t('Specify the CAS attributes to use for roles, one per line. For example, <strong>department</strong> or <strong>affiliations</strong>. Do not use token syntax, as it will not be processed. .'),
+    '#default_value' => $managed_roles['mapping'],
+  );
+
+  $form['token_tree'] = array(
+    '#theme' => 'token_tree',
+    '#token_types' => array('cas'),
+    '#global_types' => FALSE,
+  );
 
   return system_settings_form($form);
 }
@@ -121,4 +152,3 @@ function cas_attributes_list() {
 
   return theme('table', array('header' => $header, 'rows' => $rows));
 }
-
