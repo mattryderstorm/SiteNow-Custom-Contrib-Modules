@@ -4,9 +4,9 @@ core = 7.x
 
 dependencies[] = addressfield
 dependencies[] = block
-; Information added by drupal.org packaging script on 2012-04-16
-version = "7.x-1.0-beta4"
+; Information added by drupal.org packaging script on 2012-07-30
+version = "7.x-1.0-beta5"
 core = "7.x"
 project = "addressfield_staticmap"
-datestamp = "1334607091"
+datestamp = "1343670376"
 
