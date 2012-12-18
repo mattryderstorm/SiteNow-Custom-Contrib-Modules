@@ -284,7 +284,7 @@ Lightbox = {
     var arrayPageSize = Lightbox.getPageSize();
     $("#lightbox2-overlay").hide().css({
       'width': '100%',
-      'zIndex': '9990',
+      'zIndex': '10090',
       'height': arrayPageSize[1] + 'px',
       'backgroundColor' : '#' + Lightbox.overlayColor
     });
