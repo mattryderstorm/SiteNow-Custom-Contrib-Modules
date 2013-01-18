@@ -223,6 +223,8 @@ Note, the < and > characters have been changed to their HTML entities, and the "
 have been escaped.
 
 
+
+
 KEYBOARD SHORTCUTS
 ------------------
 Not all of the default keyboard shortcuts work in the Opera browser, for example
