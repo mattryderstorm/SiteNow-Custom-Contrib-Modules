@@ -11,7 +11,7 @@
 function workbench_access_init() {
   // Even though we cache, we still need the include, or else our hooks don't
   // run properly. See http://drupal.org/node/1356272
-  $scheme = variable_get('workbench_access', 'taxonomy');
+  $scheme = variable_get('workbench_access');
   workbench_access_load_include($scheme);
 }
 
@@ -26,6 +26,16 @@ function workbench_access_menu() {
     'type' => MENU_CALLBACK,
     'file' => 'workbench_access.pages.inc',
   );
+  if (!variable_get('workbench_access_custom_form', 1) || variable_get('workbench_access') != 'taxonomy') {
+    $items['workbench_access/taxonomy_autocomplete'] = array(
+      'title' => 'Autocomplete taxonomy',
+      'page callback' => 'workbench_access_taxonomy_autocomplete',
+      'access arguments' => array('access content'),
+      'type' => MENU_CALLBACK,
+      'file' => 'taxonomy.workbench_access.inc',
+      'file path' => drupal_get_path('module', 'workbench_access') . '/modules',
+    );
+  }
   $items['admin/config/workbench/access'] = array(
     'title' => 'Workbench Access',
     'description' => 'Workbench access control settings',
@@ -125,19 +135,6 @@ function workbench_access_menu_alter(&$items) {
   // Hide our taxonomy view pages.
   $items['taxonomy/term/%taxonomy_term']['access callback'] = 'workbench_access_taxonomy_page_access';
   $items['taxonomy/term/%taxonomy_term']['access arguments'] = array(2);
-
-  // Taxonomy autocomplete does not pass enough context.
-  // Not using a custom form element or taxonomy? Then we don't need this.
-  if (!variable_get('workbench_access_custom_form', 1) || variable_get('workbench_access', 'taxonomy') != 'taxonomy') {
-    $items['taxonomy/autocomplete'] = array(
-      'title' => 'Autocomplete taxonomy',
-      'page callback' => 'workbench_access_taxonomy_autocomplete',
-      'access arguments' => array('access content'),
-      'type' => MENU_CALLBACK,
-      'file' => 'taxonomy.workbench_access.inc',
-      'file path' => drupal_get_path('module', 'workbench_access') . '/modules',
-    );
-  }
 
   // It is possible that another module added this item.
   if (isset($items['admin/config/workbench'])) {
@@ -395,7 +392,7 @@ function workbench_access_node_access($node, $op, $account) {
   }
 
   // Load the current scheme.
-  workbench_access_load_include(variable_get('workbench_access', 'taxonomy'));
+  workbench_access_load_include(variable_get('workbench_access'));
   // Get the access rules for this node.
   $result = FALSE; // Always default to FALSE.
   if (!empty($node->workbench_access) && !empty($account->workbench_access)) {
@@ -513,7 +510,7 @@ function workbench_access_get_access_tree($account_access = array()) {
     ->addTag('workbench_access')
     ->fields('wa', array('access_id', 'access_type', 'access_scheme', 'access_type_id'))
     ->condition('wa.access_id', $account_access, 'IN')
-    ->condition('wa.access_type', variable_get('workbench_access', 'taxonomy'))
+    ->condition('wa.access_type', variable_get('workbench_access'))
     ->execute()->fetchAllAssoc('access_id', PDO::FETCH_ASSOC);
   foreach ($access_scheme as $id => $info) {
     $trees[$key][$id] = workbench_access_tree($info, TRUE);
@@ -546,7 +543,11 @@ function workbench_access_tree($info, $keys = FALSE) {
  * Load the active tree.
  */
 function workbench_access_get_active_tree() {
-  $scheme = variable_get('workbench_access', 'taxonomy');
+  $scheme = variable_get('workbench_access');
+  if (!$scheme) {
+    return FALSE;
+  }
+
   workbench_access_load_include($scheme);
 
   // Now check the cache.
@@ -586,7 +587,7 @@ function workbench_access_get_active_tree() {
 function workbench_access_node_load($nodes, $types) {
   $scheme = &drupal_static(__FUNCTION__);
   if (!isset($scheme)) {
-    $scheme = variable_get('workbench_access', 'taxonomy');
+    $scheme = variable_get('workbench_access');
   }
   $tree = workbench_access_get_active_tree();
   $result = array();
@@ -621,6 +622,8 @@ function workbench_access_node_load($nodes, $types) {
 function workbench_access_node_insert($node) {
   // Clear the old records for this node.
   workbench_access_node_delete($node);
+  // Make sure we have processed new data.
+  workbench_access_node_presave($node);
   // If nothing to set, we are done.
   if (empty($node->workbench_access)) {
     return;
@@ -652,6 +655,10 @@ function workbench_access_node_insert($node) {
  * Implements hook_node_presave().
  */
 function workbench_access_node_presave($node) {
+  // We must have a node id to continue. @see workbench_access_node_insert().
+  if (empty($node->nid)) {
+    return;
+  }
   // Did we use the default field form?
   workbench_access_prepare_field_save($node);
   if (isset($node->workbench_access_fields)) {
@@ -702,7 +709,7 @@ function workbench_access_node_presave($node) {
 function workbench_access_prepare_field_save($node) {
   // If using a default form element, or the form data is already present, then
   // we do not need this step.
-  if (variable_get('workbench_access_custom_form', 1) || isset($node->workbench_access_fields)) {
+  if (variable_get('workbench_access_custom_form', 1)) {
     return;
   }
   $tree = workbench_access_get_active_tree();
@@ -710,7 +717,7 @@ function workbench_access_prepare_field_save($node) {
   $node->workbench_access_language = $scheme['translatable'];
   $node->workbench_access_column = $scheme['storage_column'];
   // Find the fields to watch for data.
-  if (!empty($scheme['form_field'])) {
+  if (empty($node->workbench_access_fields) && !empty($scheme['form_field'])) {
     $node->workbench_access_fields[] = $scheme['form_field'];
   }
   else {
@@ -744,6 +751,7 @@ function workbench_access_user_load($users) {
   foreach ($users as $uid => $account) {
     workbench_access_user_load_data($account);
   }
+  drupal_static_reset('workbench_access_get_user_tree');
 }
 
 /**
@@ -756,65 +764,69 @@ function workbench_access_user_load($users) {
  *   No return. Add the workbench_access attribute by reference.
  */
 function workbench_access_user_load_data($account) {
-  $lookup = drupal_static(__FUNCTION__);
-  if (isset($lookup[$account->uid])) {
-    $account->workbench_access = $lookup[$account->uid];
-    return;
-  }
   $access = array();
-  $access_scheme = variable_get('workbench_access', 'taxonomy');
+  $access_scheme = variable_get('workbench_access');
   $active = workbench_access_get_active_tree();
+
   // There must be active sections, and the user must be allowed to use one.
-  if (empty($active['tree']) || !user_access('access workbench access by role', $account)) {
-    $lookup[$account->uid] = $access;
-    $account->workbench_access = $lookup[$account->uid];
-    return;
-  }
-  // Get the user's assigned access sections.
-  $query = db_select('workbench_access_user', 'wau')
-    ->addTag('workbench_access_user')
-    ->fields('wau', array('access_id'))
-    ->condition('wau.uid', $account->uid)
-    ->condition('wau.access_scheme', $access_scheme);
-  $result = $query->execute()->fetchAll();
-  $items = array();
-  foreach ($result as $data) {
-    $items[$data->access_id] = $data;
-  }
-  // Add roles.
-  $query = db_select('workbench_access_role', 'war')
-    ->addTag('workbench_access_role')
-    ->fields('war', array('access_id'))
-    ->condition('war.rid', array_keys($account->roles), 'IN')
-    ->condition('war.access_scheme', $access_scheme);
-  $result = $query->execute()->fetchAll();
-  foreach ($result as $data) {
-    if (!isset($items[$data->access_id])) {
+  if (!empty($active['tree']) && user_access('access workbench access by role', $account)) {
+    // Get the user's assigned access sections.
+    $query = db_select('workbench_access_user', 'wau')
+      ->addTag('workbench_access_user')
+      ->fields('wau', array('access_id'))
+      ->condition('wau.uid', $account->uid)
+      ->condition('wau.access_scheme', $access_scheme);
+    $result = $query->execute()->fetchAll();
+    $items = array();
+    foreach ($result as $data) {
       $items[$data->access_id] = $data;
-      // Identify the access-by-role features.
-      $account->workbench_access_by_role[] = $data->access_id;
+    }
+    // Add roles.
+    $query = db_select('workbench_access_role', 'war')
+     ->addTag('workbench_access_role')
+      ->fields('war', array('access_id'))
+      ->condition('war.rid', array_keys($account->roles), 'IN')
+     ->condition('war.access_scheme', $access_scheme);
+    $result = $query->execute()->fetchAll();
+    foreach ($result as $data) {
+      $items[$data->access_id] = $data;
+    }
+    // Add roles.
+    $query = db_select('workbench_access_role', 'war')
+      ->addTag('workbench_access_role')
+      ->fields('war', array('access_id'))
+      ->condition('war.rid', array_keys($account->roles), 'IN')
+      ->condition('war.access_scheme', $access_scheme);
+    $result = $query->execute()->fetchAll();
+    foreach ($result as $data) {
+      if (!isset($items[$data->access_id])) {
+        $items[$data->access_id] = $data;
+        // Identify the access-by-role features.
+        $account->workbench_access_by_role[] = $data->access_id;
+      }
+    }
+    foreach ($items as $item) {
+      if (!in_array($item->access_id, array_keys($active['tree']))) {
+        continue;
+      }
+      // Get the permissions for those sections.
+      // @TODO: complex permission handling.
+      $access[$item->access_id] = array(
+        'view' => array('all'),
+        'create' => array('all'),
+        'update' => array('all'),
+        'delete' => array('all'),
+        'preview' => array('all'),
+        'revise' => array('all'),
+        'publish' => array('all'),
+      );
     }
   }
-  foreach ($items as $item) {
-    if (!in_array($item->access_id, array_keys($active['tree']))) {
-      continue;
-    }
-    // Get the permissions for those sections.
-    // @TODO: complex permission handling.
-    $access[$item->access_id] = array(
-      'view' => array('all'),
-      'create' => array('all'),
-      'update' => array('all'),
-      'delete' => array('all'),
-      'preview' => array('all'),
-      'revise' => array('all'),
-      'publish' => array('all'),
-    );
-  }
+
   // Allow modules to alter the default behavior.
   drupal_alter('workbench_access_user', $access, $account);
-  $lookup[$account->uid] = $access;
-  $account->workbench_access = $lookup[$account->uid];
+
+  $account->workbench_access = $access;
 }
 
 /**
@@ -999,7 +1011,7 @@ function workbench_access_rebuild_user($uid, $sections = array()) {
   // Get the user and scheme data.
   $account = user_load($uid);
   $user_sections = array_keys($account->workbench_access);
-  $access_scheme = variable_get('workbench_access', 'taxonomy');
+  $access_scheme = variable_get('workbench_access');
   // Check to see if any sections have been removed.
   $removed = array_diff($user_sections, $sections);
   foreach ($removed as $access_id) {
@@ -1285,6 +1297,18 @@ function workbench_access_options($tree, $active) {
 }
 
 /**
+ * Build an array of form options for the currently active workbench access tree.
+ *
+ * @return
+ *   An array of options, suitable for use in a form.
+ */
+function workbench_access_active_options() {
+  $active = workbench_access_get_active_tree();
+  $tree = workbench_access_get_user_tree();
+  return workbench_access_options($tree, $active['active']);
+}
+
+/**
  * Ensure the proper action for our content form.
  */
 function workbench_access_form_views_exposed_form_alter(&$form, &$form_state) {
@@ -1379,6 +1403,11 @@ function workbench_access_form_alter(&$form, $form_state, $form_id) {
     return;
   }
 
+  // Do not fire if this content type is not under our control.
+  if (!variable_get('workbench_access_node_type_' . $form['#node']->type, 1)) {
+    return;
+  }
+
   // Determine which form element to target.
   if (variable_get('workbench_access_custom_form', 1)) {
     // Provide a form element.
@@ -1447,8 +1476,7 @@ function workbench_access_node_form_element(&$form, $form_state) {
     $options[NULL] = t('- Select a value -');
   }
   // Get the user options.
-  $tree = workbench_access_get_user_tree();
-  $options += workbench_access_options($tree, $active['active']);
+  $options += workbench_access_active_options();
 
   // If there are no options and the 'workbench_access' variable has not been set
   // then it seems that Workbench Access has not been configured.
@@ -1520,11 +1548,8 @@ function workbench_access_default_form_element(&$form, &$form_state) {
     drupal_set_message(workbench_access_configuration_needed_message(), 'warning');
   }
   else {
-    // Prepare the form element.
-    $active = workbench_access_get_active_tree();
-    $tree = workbench_access_get_user_tree();
     // Generate options so we can check for access.
-    $options = workbench_access_options($tree, $active['active']);
+    $options = workbench_access_active_options();
     // Call the function.
     $func = $form['workbench_access_fields']['#access_type'] . '_workbench_access_default_form_alter';
     if (function_exists($func)) {
@@ -1598,7 +1623,7 @@ function workbench_access_sections_needed_message() {
  * Add a sections form to native vocabulary editing.
  */
 function workbench_access_form_taxonomy_form_vocabulary_alter(&$form, &$form_state, $form_id) {
-  if (!user_access('administer workbench access') || variable_get('workbench_access', 'taxonomy') != 'taxonomy') {
+  if (!user_access('administer workbench access') || variable_get('workbench_access') != 'taxonomy') {
     return;
   }
   $vocabulary = $form['#vocabulary'];
@@ -1634,7 +1659,7 @@ function workbench_access_vocabulary_submit($form, &$form_state) {
  * Add a sections form to native term editing.
  */
 function workbench_access_form_taxonomy_form_term_alter(&$form, &$form_state, $form_id) {
-  if (!user_access('administer workbench access') || variable_get('workbench_access', 'taxonomy') != 'taxonomy' || isset($form_state['confirm_delete'])) {
+  if (!user_access('administer workbench access') || variable_get('workbench_access') != 'taxonomy' || isset($form_state['confirm_delete'])) {
     return;
   }
   // On delete, the term may be an object. Be consistent, core!
@@ -1645,6 +1670,25 @@ function workbench_access_form_taxonomy_form_term_alter(&$form, &$form_state, $f
   }
   $access_id = isset($term['tid']) ? $term['tid'] : NULL;
   workbench_access_edit_form_alter($form, $access_id, 'term');
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ *
+ * The term overview page does not fire hook_taxonomy_term_update().
+ */
+function workbench_access_form_taxonomy_overview_terms_alter(&$form, &$form_state, $form_id) {
+  if (variable_get('workbench_access') != 'taxonomy') {
+    return;
+  }
+  $form['#submit'][] = 'workbench_access_form_taxonomy_overview_terms_submit';
+}
+
+/**
+ * Updates taxonomy access tree on overview save.
+ */
+function workbench_access_form_taxonomy_overview_terms_submit($form, &$form_state) {
+  workbench_access_reset_tree();
 }
 
 /**
@@ -1724,7 +1768,7 @@ function workbench_access_edit_form_submit($values, $section, $name) {
  * Add a sections form.
  */
 function workbench_access_form_menu_edit_menu_alter(&$form, &$form_state, $form_id) {
-  if (!user_access('administer workbench access') || variable_get('workbench_access', 'taxonomy') != 'menu') {
+  if (!user_access('administer workbench access') || variable_get('workbench_access') != 'menu') {
     return;
   }
   $menu = $form['menu_name']['#default_value'];
@@ -1760,7 +1804,7 @@ function workbench_access_menu_submit($form, &$form_state) {
  * Add a sections form.
  */
 function workbench_access_form_menu_edit_item_alter(&$form, &$form_state, $form_id) {
-  if (!user_access('administer workbench access') || variable_get('workbench_access', 'taxonomy') != 'menu') {
+  if (!user_access('administer workbench access') || variable_get('workbench_access') != 'menu') {
     return;
   }
   $menu = $form['original_item']['#value']['menu_name'];
@@ -1820,7 +1864,7 @@ function workbench_access_workbench_block() {
       }
       else {
         $names = array();
-        $access_type = variable_get('workbench_access', 'taxonomy');
+        $access_type = variable_get('workbench_access');
         foreach ($node->workbench_access as $access_id) {
           $section = workbench_access_load($access_type, $access_id);
           $names[] = $section['name'];
@@ -1838,8 +1882,9 @@ function workbench_access_node_operations($form = array(), $form_state = array()
   if (!user_access('batch update workbench access')) {
     return;
   }
-  $tree = workbench_access_get_user_tree();
   $active = workbench_access_get_active_tree();
+  $tree = $active['tree'];
+  workbench_access_build_tree($tree);
   $options = workbench_access_options($tree, $active['active']);
   if (empty($options)) {
     return;
@@ -1975,21 +2020,27 @@ function workbench_access_access_scheme_load($scheme) {
  *
  * @param $type
  *  The content type machine name.
+ * @param $all
+ *  Boolean flag to return all possible fields for this content type. If set
+ *  to FALSE, then only configured access fields are returned.
+ *
+ * @see workbench_access_get_available_fields().
  *
  * @return
  *  An array of field data that matches the current access scheme.
  */
-function workbench_access_get_assigned_fields($type) {
+function workbench_access_get_assigned_fields($type, $all = FALSE) {
   $matches = array();
   $fields = field_info_instances('node', $type);
-  $scheme = variable_get('workbench_access', 'taxonomy');
+  $scheme = variable_get('workbench_access');
   $settings = variable_get('workbench_access_' . $scheme, array());
   foreach ($fields as $field => $info) {
     $data = field_info_field($field);
     if ($data['module'] == $scheme) {
       foreach ($data['settings']['allowed_values'] as $key => $value) {
         // Currently, only works for taxonomy.
-        if (!empty($settings[$value['vocabulary']])) {
+        $instance = field_info_instance('node', $field, $type);
+        if (!empty($settings[$value['vocabulary']]) && ($all || !empty($instance['workbench_access_field']))) {
           $data['instance_info'] = $info;
           $matches[$field] = $data;
         }
@@ -1997,6 +2048,20 @@ function workbench_access_get_assigned_fields($type) {
     }
   }
   return $matches;
+}
+
+/**
+ * Finds fields that may be associated with a content type.
+ *
+ * @param $type
+ *  The content type machine name.
+ *
+ * @return
+ *  An array of field data that matches the current access scheme.
+ */
+function workbench_access_get_available_fields($type) {
+  $all = TRUE;
+  return workbench_access_get_assigned_fields($type, $all);
 }
 
 /**
@@ -2025,7 +2090,7 @@ function workbench_access_is_active_autocomplete() {
   $path = $page_arguments[0] . '/' . $page_arguments[1];
   // If the path is wrong, or the arguments are not provided, then we cannot
   // safely alter the term query.
-  if ($path != 'taxonomy/autocomplete' || empty($page_arguments[2]) || empty($page_arguments[3])) {
+  if ($path != 'workbench_access/taxonomy_autocomplete' || empty($page_arguments[2]) || empty($page_arguments[3])) {
     return $result;
   }
 
@@ -2038,4 +2103,51 @@ function workbench_access_is_active_autocomplete() {
   }
 
   return $result;
+}
+
+/**
+ * Given a change in source tree keys, update affected records.
+ *
+ * @param string $find
+ *   The id to find.
+ * @param string $replace
+ *   The id to replace.
+ * @param string $scheme
+ *   The access scheme to check. Optional.
+ */
+function workbench_access_update_records($find, $replace, $scheme = NULL) {
+  if (empty($scheme)) {
+    $scheme = variable_get('workbench_access');
+  }
+  // Update the base table.
+  db_update('workbench_access')
+    ->fields(array('access_id' => $replace))
+    ->condition('access_scheme', $scheme)
+    ->condition('access_id', $find)
+    ->execute();
+  db_update('workbench_access')
+    ->fields(array('access_type_id' => $replace))
+    ->condition('access_scheme', $scheme)
+    ->condition('access_type_id', $find)
+    ->execute();
+  // Update each sub-table.
+  foreach (array('node', 'role', 'user') as $table) {
+    db_update('workbench_access_' . $table)
+      ->fields(array('access_id' => $replace))
+      ->condition('access_id', $find)
+      ->condition('access_scheme', $scheme)
+      ->execute();
+  }
+  // Update the section variable.
+  $active = variable_get('workbench_access_' . $scheme, array());
+  foreach ($active as $key => $value) {
+    if ($key == $find) {
+      $new[$replace] = empty($value) ? 0 : $replace;
+    }
+    else {
+      $new[$key] = $value;
+    }
+  }
+  variable_set('workbench_access_' . $scheme, $new);
+  drupal_set_message(t('Editorial sections have been updated.'));
 }

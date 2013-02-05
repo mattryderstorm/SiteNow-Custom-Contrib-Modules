@@ -16,25 +16,29 @@ function workbench_access_settings_form($form, &$form_state) {
   foreach ($info as $key => $value) {
     $options[$key] = $value['name'] . '<div class="description">' . $value['description'] . '</div>';
   }
-  $active = variable_get('workbench_access', 'taxonomy');
+  $active = variable_get('workbench_access');
   $form = array();
   $form['help'] = array(
     '#markup' => '<h2>' . t('Workbench Access settings') . '</h2>',
   );
   // Check for proper installation.
-  $vocabulary = workbench_access_sample_vocabulary();
-  $exists = workbench_access_vocabulary_exists($vocabulary);
-  if ($active == 'taxonomy' && !$exists) {
-    $form['help']['#markup'] .= '<p>' . t('Install the <a href="!url">test configuration for Workbench</a>.', array('!url' => url('admin/config/workbench/access/install'))) .'</p>';
+  if (module_exists('taxonomy')) {
+    $vocabulary = workbench_access_sample_vocabulary();
+    $exists = workbench_access_vocabulary_exists($vocabulary);
+    if (!$exists && (empty($active) || $active == 'taxonomy')) {
+      $form['help']['#markup'] .= '<p>' . t('Install the <a href="!url">test configuration for Workbench</a>.', array('!url' => url('admin/config/workbench/access/install'))) .'</p>';
+    }
   }
   $form['workbench_access'] = array(
     '#type' => 'radios',
     '#title' => t('Active access scheme'),
     '#options' => $options,
-    '#default_value' => $active,
     '#description' => t('Select the access scheme to use for the site.'),
     '#required' => TRUE,
   );
+  if ($active) {
+    $form['workbench_access']['#default_value'] = $active;
+  }
   // Get the configuration options for the active schemes.
   foreach ($info as $key => $value) {
     if (!isset($info[$key]['configuration'])) {
@@ -72,7 +76,7 @@ function workbench_access_settings_form($form, &$form_state) {
       '#markup' => t('Only selected content types will have Workbench Access rules <em>enforced</em>.'),
     );
     // Set the field settings for field-based modules, if required.
-    if (!variable_get('workbench_access_custom_form', 1) && empty($info[$active]['form_field'])) {
+    if (!variable_get('workbench_access_custom_form', 1) && array_key_exists($active, $info) && empty($info[$active]['form_field'])) {
       $form['field_elements'] = array(
         '#type' => 'fieldset',
         '#title' => t('Access control fields'),
@@ -87,6 +91,7 @@ function workbench_access_settings_form($form, &$form_state) {
       }
       foreach ($types as $type => $data) {
         $fields = workbench_access_get_assigned_fields($type);
+        $available = workbench_access_get_available_fields($type);
         $name = node_type_get_name($type);
         $controlled = variable_get('workbench_access_node_type_' . $type, 1);
         if (empty($controlled)) {
@@ -96,19 +101,26 @@ function workbench_access_settings_form($form, &$form_state) {
             '#markup' => t('This content type is not under access control.'),
           );
         }
-        elseif (empty($fields)) {
-          $message = t('The %type content type does not have an access field configured.', array('%type' => $name));
+        elseif (empty($available)) {
+          $message = t('The %type content type does not have any fields that can be used for access control.', array('%type' => $name));
           drupal_set_message($message, 'warning', FALSE);
           $form['field_elements'][$type] = array(
             '#type' => 'item',
-            '#title' => t('%type content type access control fields', array('%type' => $name)),
+            '#title' => t('%type content type fields', array('%type' => $name)),
             '#markup' => $message,
           );
         }
         else {
           $field_options = array();
           $default_options = array();
-          foreach ($fields as $field => $info) {
+          $message = '';
+          if (empty($fields)) {
+            $message = t('The %type content type does not have an access field configured.', array('%type' => $name));
+            drupal_set_message($message, 'warning', FALSE);
+            $field_options['wa-no-access-field'] = t('No access control field');
+            $default_options[] = 'wa-no-access-field';
+          }
+          foreach ($available as $field => $info) {
             $field_options[$field] = t('!label (!field)', array('!label' => $info['instance_info']['label'], '!field' => $field));
             if (!empty($info['instance_info']['workbench_access_field'])) {
               $default_options[$field] = $field;
@@ -120,6 +132,7 @@ function workbench_access_settings_form($form, &$form_state) {
             '#options' => $field_options,
             '#default_value' => $default_options,
             '#multiple' => variable_get('workbench_access_allow_multiple', 0),
+            '#description' => $message,
           );
         }
       }
@@ -187,12 +200,12 @@ function workbench_access_settings_validate($form, &$form_state) {
  * Set configuration.
  */
 function workbench_access_settings_submit($form, &$form_state) {
+  // Reset the tree.
+  workbench_access_reset_tree();
   // If auto-assign, then do so.
   if (empty($form_state['values']['workbench_access_auto_assign'])) {
     return;
   }
-  // Reset the tree.
-  workbench_access_reset_tree();
   // Get the new tree rules and check for changes.
   $active = workbench_access_get_active_tree();
   foreach ($active['tree'] as $key => $item) {
@@ -227,7 +240,10 @@ function workbench_access_settings_submit($form, &$form_state) {
  */
 function workbench_access_save_field_elements($types) {
   foreach ($types as $type => $settings) {
-    $fields = workbench_access_get_assigned_fields($type);
+    if ($settings == 'wa-no-access-field') {
+      return;
+    }
+    $fields = workbench_access_get_available_fields($type);
     foreach ($fields as $field => $info) {
       $instance = $info['instance_info'];
       $instance['workbench_access_field'] = (int) !empty($settings[$field]);
@@ -241,6 +257,11 @@ function workbench_access_save_field_elements($types) {
  */
 function workbench_access_section_form($form, &$form_state) {
   $active = workbench_access_get_active_tree();
+  // Ensure that we have configured access controls.
+  if (!$active = workbench_access_get_active_tree()) {
+    $form['help']['#markup'] = workbench_access_configuration_needed_message();
+    return $form;
+  }
   $form = array();
   $form['access_scheme'] = array(
     '#type' => 'value',
@@ -491,8 +512,10 @@ function workbench_access_editors($access_type = NULL, $access_type_id = NULL, $
       $breadcrumb[] = l(t('Workbench Access'), 'admin/config/workbench/access');
       workbench_access_breadcrumb($breadcrumb);
     }
-
-    $active = workbench_access_get_active_tree();
+    // Ensure that we have configured access controls.
+    if (!$active = workbench_access_get_active_tree()) {
+      return workbench_access_configuration_needed_message();
+    }
     $active['access_scheme']['access_id'] = $access_type_id;
     $active_keys = array_keys($active['active']);
     if ($type == 'role') {
