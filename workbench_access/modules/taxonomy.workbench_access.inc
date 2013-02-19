@@ -105,7 +105,7 @@ function taxonomy_workbench_access_field_ui_field_edit_form_alter(&$form, &$form
     '#default_value' => !empty($form['#instance']['workbench_access_field']),
     '#weight' => -15,
   );
-  $allowed = workbench_access_get_assigned_fields($form['#instance']['bundle']);
+  $allowed = workbench_access_get_available_fields($form['#instance']['bundle']);
   $instance = $form['#instance']['field_name'];
   if (!isset($allowed[$instance])) {
     $form['instance']['workbench_access_field']['#disabled'] = TRUE;
@@ -245,23 +245,13 @@ function taxonomy_workbench_access_default_form_alter(&$form, &$form_state, $opt
         }
       }
     }
-    // To act on autocompletes, we need to add the node type to the callback.
+    // For content access fields with autocomplete widget, we use our own autocomplete callback with node type.
     elseif (isset($element['#autocomplete_path'])) {
-      $element['#autocomplete_path'] .= '/' . $form['#node']->type;
+      $element['#autocomplete_path'] = 'workbench_access/taxonomy_autocomplete/' . $item . '/' . $form['#node']->type;
       // We need our own validation, too.
       $element['#element_validate'][] = 'workbench_access_autocomplete_validate';
     }
   }
-  // Inform Workbench Access which data element we store on the node.
-  // (e.g.) $node->{$field}[LANGUAGE][][COLUMN].
-  $form['workbench_access_column'] = array(
-    '#type' => 'value',
-    '#value' => 'tid',
-  );
-  $form['workbench_access_language'] = array(
-    '#type' => 'value',
-    '#value' => TRUE,
-  );
 }
 
 /**
@@ -349,7 +339,7 @@ function workbench_access_query_term_access_alter(QueryAlterableInterface $query
  * If a new term is added, check to see if we need to create a section.
  */
 function workbench_access_taxonomy_term_insert($term) {
-  if (variable_get('workbench_access', 'taxonomy') != 'taxonomy' || !variable_get('workbench_access_auto_assign', 1)) {
+  if (variable_get('workbench_access') != 'taxonomy' || !variable_get('workbench_access_auto_assign', 1)) {
     return;
   }
   $active = array_filter(variable_get('workbench_access_taxonomy', array()));
@@ -362,6 +352,15 @@ function workbench_access_taxonomy_term_insert($term) {
     );
     workbench_access_section_save($section);
   }
+}
+
+/**
+ * Implements hook_taxonomy_term_update().
+ *
+ * If a term is updated, reset the tree.
+ */
+function workbench_access_taxonomy_term_update($term) {
+  workbench_access_reset_tree();
 }
 
 /**
@@ -385,5 +384,23 @@ function workbench_access_taxonomy_vocabulary_delete($vocabulary) {
   $access_scheme = db_query("SELECT * FROM {workbench_access} WHERE access_type = :access_type AND access_id = :access_id", array(':access_type' => 'taxonomy', ':access_id' => $vocabulary->machine_name))->fetchAssoc();
   if (!empty($access_scheme)) {
     workbench_access_section_delete($access_scheme);
+  }
+}
+
+/**
+ * Implements hook_taxonomy_vocabulary_update().
+ *
+ * If a machine_name is changed, then we must update our keys.
+ */
+function workbench_access_taxonomy_vocabulary_update($vocabulary) {
+  // Update the section variable, if necessary.
+  $active = variable_get('workbench_access_taxonomy', array());
+  $original = $vocabulary->old_machine_name;
+
+  // Check to see if the vocabulary is known and has changed.
+  if (isset($active[$original]) && $vocabulary->machine_name != $original) {
+    $find = $original;
+    $replace = $vocabulary->machine_name;
+    workbench_access_update_records($find, $replace, 'taxonomy');
   }
 }

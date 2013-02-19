@@ -84,8 +84,14 @@ function cas_attributes_admin_settings() {
   $managed_roles = $cas_attributes['roles'];
   $form['cas_attributes']['roles'] = array(
     '#type' => 'fieldset',
-    '#title' => 'Role Mapping',
+    '#title' => t('Role Mapping'),
     '#access' => user_access('administer permissions'),
+    '#description' => t('You may choose to manage assignment of one or more of the roles on this Drupal site based on the values of certain CAS attributes. ' .
+      'Only the roles you select to manage will be affected.  Managed roles will be assigned or revoked whenever a user logs in thru CAS (regardless of how you set the ' .
+      '"Overwrite existing values" setting above).<br>' .
+      'For each managed role: if the role name is present in at least one of the attributes you specify, ' .
+      'the role will be granted to the user.  If the role name is not present in any of the attributes, it will be removed from the user.<br>' .
+      'Roles must be specified by name (not by numeric ID, since that is site specific).<br>'),
   );
 
   $roles = user_roles(TRUE);
@@ -103,7 +109,13 @@ function cas_attributes_admin_settings() {
   $form['cas_attributes']['roles']['mapping'] = array(
     '#type' => 'textarea',
     '#title' => t('Attributes'),
-    '#description' => t('Specify the CAS attributes to use for roles, one per line. For example, <strong>department</strong> or <strong>affiliations</strong>. Do not use token syntax, as it will not be processed. .'),
+    '#description' => t('List the names of the CAS attributes which may ' .
+      'contain names of the managed roles.  List one attribute per line - ' .
+      'for example, <strong>department</strong> or <strong>affiliations' .
+      '</strong>. Do not use token syntax, as it will not be processed. ' .
+      'If the name of a managed role is present in at least one of these ' .
+      'attributes, that role will be given to the user; otherwise, it will ' .
+      'be taken away.'),
     '#default_value' => $managed_roles['mapping'],
   );
 
