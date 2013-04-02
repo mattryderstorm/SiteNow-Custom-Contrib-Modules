@@ -1,0 +1,3 @@
+We are using the dev version of views to reolve an issue with the 3.6 security update involvoling validation of term_ids as a contextual filter. See issue: http://drupal.org/node/1949178
+
+-Adam Delaney
