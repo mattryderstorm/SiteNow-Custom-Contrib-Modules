@@ -1,0 +1,3 @@
+We are using the dev version of this module because it resolves an issue validating a term_id as a contextual filter: http://drupal.org/node/1949178
+
+ -Adam Delaney
