@@ -44,7 +44,7 @@ function flexslider_library_alter(&$libraries, $module) {
         );
     }
   }
-  
+
   // @todo configure the styles for the theme to be altered by admin configurations
 
   // As it's only possible to use one theme per page, use the first one we get for everything.
