@@ -38,6 +38,14 @@ class bg_image_context_reaction_bg_image extends context_reaction {
         '#default_value' => isset($values['bg_image_weight']) ? $values['bg_image_weight'] : 0,
       );
 
+      $form['bg_image_style'] = array(
+        '#type' => 'select',
+        '#title' => t('Image Style'),
+        '#description' => t('Apply an image style to the image'),
+        '#options' => image_style_options(),
+        '#default_value' => isset($values['bg_image_style']) ? $values['bg_image_style'] : variable_get('bg_image_style', ''),
+      );
+
       $form['override_css_settings'] = array(
         '#type' => 'checkbox',
         '#title' => t('Override the default css settings'),
@@ -151,6 +159,7 @@ class bg_image_context_reaction_bg_image extends context_reaction {
         // Grab the weight and the selector
         $weight = $context->reactions[$this->plugin]['bg_image_weight'];
         $selector = $context->reactions[$this->plugin]['css_settings']['bg_image_selector'];
+        $bg_image_style = $context->reactions[$this->plugin]['bg_image_style'];
         // If the css settings are selected to be overridden we use them
         if ($context->reactions[$this->plugin]['override_css_settings']) {
           $css_settings = $context->reactions[$this->plugin]['css_settings'];
@@ -162,6 +171,7 @@ class bg_image_context_reaction_bg_image extends context_reaction {
         $bg_image_nodes[$selector][$weight] = array(
           'nid' => $context->reactions[$this->plugin]['bg_image_node_ref_nid'],
           'css_settings' => $css_settings,
+          'bg_image_style' => $bg_image_style,
         );
       }
     }
@@ -171,9 +181,9 @@ class bg_image_context_reaction_bg_image extends context_reaction {
       foreach($bg_image_nodes as $selector => $values) {
         // Sort the items that are using the same selector
         ksort($values);
-        // Just use the last item from the list, sincs it has the greatest weight
+        // Just use the last item from the list, since it has the greatest weight
         $bg_image_node = end($values);
-        bg_image_add_background_image_from_node($bg_image_node['nid'], $bg_image_node['css_settings']);
+        bg_image_add_background_image_from_node($bg_image_node['nid'], $bg_image_node['css_settings'], $bg_image_node['bg_image_style']);
       }
     }
   }

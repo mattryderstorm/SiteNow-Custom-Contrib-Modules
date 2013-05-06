@@ -9,13 +9,14 @@
  * Implements hook_menu().
  */
 function bg_image_ui_menu() {
-  
+
   $items['admin/content/background-images'] = array(
     'title' => 'Background Images',
     'description' => t("Manage your site's background images"),
     'page callback' => 'drupal_get_form',
     'page arguments' => array('bg_image_ui_paths_form'),
     'access arguments' => array('manage background images'),
+    'file' => NULL,
     'type' => MENU_LOCAL_TASK,
   );
 
@@ -28,7 +29,7 @@ function bg_image_ui_menu() {
     'type' => MENU_CALLBACK,
   );
 
-  
+
 
   return $items;
 }
@@ -73,7 +74,7 @@ function bg_image_ui_init() {
 
 function bg_image_ui_paths_form($form, &$form_state) {
 
-  // If a node type and field has not been configured 
+  // If a node type and field has not been configured
   if (!variable_get('bg_image_node_type', '') || !variable_get('bg_image_node_field', '')) {
     return $form['settings_first_msg'] = array(
       '#markup' => 'You must specify a content type and field on the <a href="/admin/config/content/background_image">settings page</a> before you can set background images. Once configured you will be able to reference specific nodes here, whose image field will be used to set the background image.',
@@ -88,7 +89,7 @@ function bg_image_ui_paths_form($form, &$form_state) {
   $form['description'] = array(
     '#markup' => t('<p class="bg-image-paths-description">Apply a background image on a particular path. The background image will be applied using css. The default bg image css settings configured on the <a href="/admin/config/content/background_image">settings page</a> will be used.</p><p>Only one background image will be applied to a page. Items appearing at the top of the list will take precedence over items lower in the list. So, a background image set to the path "node/1" at the top of the list would be applied before an image set to "node/*" at the bottom of the list.</p>'),
   );
-  
+
   $paths = bg_image_ui_get_paths();
 
   if (variable_get('bg_image_node_type', '') && variable_get('bg_image_node_field', '')) {
@@ -112,8 +113,8 @@ function bg_image_ui_paths_form($form, &$form_state) {
       );
       // The weight (this is for the tabledrag we'll add in the theme function
       $form['items'][$pid]['weight'] = array(
-        '#type' => 'textfield', 
-        '#delta' => 50, 
+        '#type' => 'textfield',
+        '#delta' => 50,
         '#default_value' => $item->weight,
         '#size' => 2,
       );
@@ -137,8 +138,8 @@ function bg_image_ui_paths_form($form, &$form_state) {
     );
     // The weight (this is for the tabledrag we'll add in the theme function
     $form['items'][0]['weight'] = array(
-      '#type' => 'textfield', 
-      '#delta' => 50, 
+      '#type' => 'textfield',
+      '#delta' => 50,
       '#default_value' => 50,
       '#size' => 2,
     );
@@ -149,7 +150,7 @@ function bg_image_ui_paths_form($form, &$form_state) {
     );
 
   }
-  
+
   return $form;
 }
 
@@ -167,8 +168,8 @@ function bg_image_ui_paths_form_submit($form, &$form_state) {
     // Process the rest
     foreach ($form_state['values']['items'] as $pid => $item) {
       // // If anything has changed...
-      if ($form['items'][$pid]['weight']['#default_value'] != $item['weight'] || 
-          $form['items'][$pid]['path']['#default_value'] != $item['path'] || 
+      if ($form['items'][$pid]['weight']['#default_value'] != $item['weight'] ||
+          $form['items'][$pid]['path']['#default_value'] != $item['path'] ||
           $form['items'][$pid]['nid']['#default_value'] != $item['nid']) {
         $item['pid'] = $pid;
         if ($pid == 0) {
