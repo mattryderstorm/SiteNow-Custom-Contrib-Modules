@@ -1,11 +1,6 @@
 <?php
 
 /**
- * @file
- * Definition of views_handler_filter_file_type.
- */
-
-/**
  * Filter by file type
  */
 class views_handler_filter_file_type extends views_handler_filter_in_operator {

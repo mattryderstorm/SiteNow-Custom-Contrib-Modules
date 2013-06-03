@@ -57,6 +57,9 @@ function file_entity_file_insert($file) {
   // Clear any related field caches.
   file_entity_invalidate_field_caches($file);
 
+  // Clear the page and block caches.
+  cache_clear_all();
+
   // Get and store image dimensions.
   // @todo We should fetch image dimensions in file_entity_file_presave and
   // then save them in this hook.
@@ -72,6 +75,9 @@ function file_entity_file_update($file) {
 
   // Clear any related field caches.
   file_entity_invalidate_field_caches($file);
+
+  // Clear the page and block caches.
+  cache_clear_all();
 
   // Reset the image dimensions for a file.
   // @todo We should fetch image dimensions in file_entity_file_presave and
@@ -100,16 +106,11 @@ function file_entity_file_delete($file) {
   // not yet been deleted.
   file_entity_invalidate_field_caches($file);
 
+  // Clear the page and block caches.
+  cache_clear_all();
+
   // Delete image dimensions from the {image_dimensions} table
   db_query('DELETE FROM {image_dimensions} WHERE fid = :fid', array(':fid' => $file->fid));
-
-  // Remove this file from the search index if needed.
-  // This code is implemented in file entity module rather than in search module,
-  // because file entity module is implementing search module's API, not the other
-  // way around.
-  if (module_exists('search')) {
-    search_reindex($file->fid, 'file');
-  }
 }
 
 /**
@@ -145,6 +146,19 @@ function file_entity_file_mimetype_mapping_alter(&$mapping) {
     $index = array_search($mime_type, $mapping['mimetypes']);
     $mapping['extensions'][$extension] = $index;
   }
+}
+
+/**
+ * Implements hook_file_operation_info().
+ */
+function file_entity_file_operation_info() {
+  $info['delete'] = array(
+    'label' => t('Delete selected files'),
+    'callback' => 'file_entity_multiple_delete_confirm_operation',
+    'confirm' => TRUE,
+  );
+
+  return $info;
 }
 
 /**
