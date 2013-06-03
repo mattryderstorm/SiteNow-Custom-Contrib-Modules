@@ -2,15 +2,29 @@
 
 /**
  * @file
- * Relation Add block.
+ * Relation Add module file.
  */
+
+/**
+ * Implements hook_permission().
+ */
+function relation_add_permission() {
+  $return = array();
+
+  $return['relation add endpoint autocomplete access'] = array(
+    'title' => t('Endpoint autocomplete access'),
+    'description' => t('Endpoint autocomplete menu callback access.'),
+  );
+
+  return $return;
+}
 
 /**
  * Implements hook_menu().
  */
 function relation_add_menu() {
   $items['relation_add/autocomplete/%'] = array(
-    'access callback' => TRUE,
+    'access arguments' => array('relation add endpoint autocomplete access'),
     'page callback' => 'relation_add_autocomplete',
     'page arguments' => array(2, 3, 4),
     'type' => MENU_CALLBACK,
@@ -66,6 +80,12 @@ function relation_add_block_form($form, &$form_state) {
       $entity_type = 'taxonomy_term';
       $entity = $path['map'][2];
     }
+    elseif ($path['original_map'][0] == 'colorbox') {
+       $entity_info = explode('/', $path['map'][1]);
+       $entities = entity_load($entity_info[0], array ($entity_info[1]));
+       $entity = $entities[$entity_info[1]];
+       $entity_type = $entity_info[0];
+    }
 
     if (!isset($entity)) {
       $form['explanation']['#markup'] = t('No entity found, can\'t create a relation!');
@@ -116,6 +136,37 @@ function relation_add_block_form($form, &$form_state) {
     $form_state['types'] = $types;
   } // End non-AJAX part
 
+  if (count($form_state['types']) > 1) {
+    $form['relation_type'] = array(
+      '#type'          => 'select',
+      '#title'         => t('Relation type'),
+      '#options'       => $form_state['types'],
+      '#empty_value'   => '',
+      '#empty_option'  => t('Select a relation type'),
+      '#ajax' => array(
+        'callback' => 'relation_add_block_ajax',
+        'wrapper' => 'block-relation-add-options',
+        'method' => 'replace',
+        'effect' => 'fade',
+      ),
+    );
+  }
+  else {
+    $form['relation_type'] = array(
+      '#type'          => 'value',
+      '#value'         => key($form_state['types']),  //  key of the first option
+    );
+
+    $form['relation_type_item'] = array(
+      '#type'          => 'item',
+      '#title'         => t('Relation type'),
+      '#markup'        => key($form_state['types']),  //  key of the first option
+    );
+
+    // pretend we've already returned from the AJAX callback
+    $form_state['values']['relation_type'] = $form['relation_type']['#value'];
+  }
+
   $type = '';
   if (!empty($form_state['values']['relation_type'])) {
     // Remove ':reverse' suffix if it exists, and set reverse flag
@@ -123,25 +174,11 @@ function relation_add_block_form($form, &$form_state) {
     $type = $type_array[0];
     $form_state['relation_reverse'] = (isset($type_array[1])  && $type_array[1] == 'reverse');
   }
-  $form['relation_type'] = array(
-    '#type'          => 'select',
-    '#title'         => t('Relation type'),
-    '#default_value' => $type,
-    '#options'       => $form_state['types'],
-    '#empty_value'   => '',
-    '#empty_option'  => t('Select a relation type'),
-    '#ajax' => array(
-      'callback' => 'relation_add_block_ajax',
-      'wrapper' => 'relation-add-options',
-      'method' => 'replace',
-      'effect' => 'fade',
-    ),
-  );
 
   $form['relation_options'] = array(
 //    '#type'           => 'fieldset',
 //    '#title'          => t('Relation options'),
-    '#prefix' => '<div id="relation-add-options">',
+    '#prefix' => '<div id="block-relation-add-options">',
     '#suffix' => '</div>',
   );
 
@@ -230,7 +267,7 @@ function relation_add_save($form, &$form_state) {
   $entity_keys = array();
   foreach ($entity_strings as $r_index => $entity_string) {
     $matches = array();
-    preg_match('/([\w\s]*)\[([\w\d]+):(\d+)\]/', $entity_string, $matches);
+    preg_match('/(.*)\[([\w\d]+):(\d+)\]/', $entity_string, $matches);
     if ($matches) {
       $entity_keys[] = array(
         'entity_label' => $matches[1],
@@ -275,6 +312,11 @@ function relation_add_autocomplete($type = '', $direction = 'target', $string = 
   if (empty($type) || empty($direction) || empty($string)) {
     exit();
   }
+
+  // Removing the :reverse suffix if exists.
+  $type_array = explode(':', $type);
+  $type = $type_array[0];
+
   $entity_infos = entity_get_info();
   $relation_type = relation_type_load($type);
   $entity_bundles = array();
@@ -303,8 +345,13 @@ function relation_add_autocomplete($type = '', $direction = 'target', $string = 
     $query->entityCondition('entity_type', $entity_type)
       ->propertyCondition($label_key, $string, 'CONTAINS')
       ->range(0, $limit);
-    if (!in_array('*', $bundles)) {
+    if (!in_array('*', $bundles) && $entity_type != 'taxonomy_term') {
       $query->entityCondition('bundle', $bundles, 'IN');
+    }
+    elseif (!in_array('*', $bundles) && $entity_type == 'taxonomy_term') {
+      $vocabularies = taxonomy_vocabulary_load_multiple(NULL, array('machine_name' => $bundles));
+      $bundles = array_keys($vocabularies);
+      $query->propertyCondition('vid', $bundles, 'IN');
     }
     if ($results = $query->execute()) {
       foreach (array_keys($results[$entity_type]) as $id) {
@@ -362,9 +409,14 @@ function relation_add_field_is_empty($item, $field) {
  */
 function relation_add_field_load($entity_type, $entities, $field, $instances, $langcode, &$items, $age) {
   foreach ($entities as $id => $entity) {
-    foreach ($instances[$id]['settings']['relation_type'] as $type) {
-      $type_array = explode(':', $type);
-      $relation_types[$type_array[0]] = $type_array[0];
+    if (!empty($instances[$id]['settings']['relation_type'])) {
+      foreach ($instances[$id]['settings']['relation_type'] as $type) {
+        $type_array = explode(':', $type);
+        $relation_types[$type_array[0]] = $type_array[0];
+      }
+    }
+    else {
+      $relation_types = array_keys(relation_get_types());
     }
 
     $query = relation_query($entity_type, $id);
@@ -398,7 +450,7 @@ function relation_add_field_instance_settings_form($field, $instance) {
     }
     foreach ($relation_type_data->target_bundles as $relation_bundle_key) {
       if ($bundle_key == $relation_bundle_key || $bundle_wildcard_key == $relation_bundle_key) {
-        $options[$relation_type . ':reverse'] = $relation_type_data->label;
+        $options[$relation_type . ':reverse'] = t('@relation_label (reverse)', array('@relation_label' => $relation_type_data->label));
       }
     }
   }
@@ -407,11 +459,41 @@ function relation_add_field_instance_settings_form($field, $instance) {
   $form['relation_type'] = array(
     '#type' => 'select',
     '#title' => t('Relation types'),
-    '#description' => t('Select all the relation types you want to display in the dummy field. Only relation types applicable to this entity bundle are show here. If no relation_types are selected, relations of all types will be displayed.'),
+    '#description' => t('Select all the relation types you want to display in the relation add field. Only relation types applicable to this entity bundle are shown here. If no relation_types are selected, relations of all types will be displayed.'),
     '#default_value' => $instance['settings']['relation_type'],
     '#options' => $options,
     '#multiple' => TRUE,
   );
+
+  if (count($instance['settings']['relation_type']) > 1) {
+    // The default value can only be set if there are more than 1 relation types
+    $form['fieldset'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Default value'),
+      '#collapsible' => FALSE,
+    );
+    $form['fieldset']['content'] = array(
+      '#pre' => '<p>',
+      '#markup' => t('The default value for this field, used when creating new content.'),
+      '#suffix' => '</p>',
+    );
+
+    foreach ($instance['settings']['relation_type'] as $rel_type) {
+      $type_array = explode(':', $rel_type);
+      $relation_type = relation_type_load($type_array[0]);
+      $types[$rel_type] = (isset($type_array[1]) ? $relation_type->reverse_label : $relation_type->label);
+    }
+    $form['fieldset']['default_value'] = array(
+      '#type'          => 'select',
+      '#title'         => t('Relation type'),
+      '#options'       => $types,
+      '#default_value' => (isset($instance['settings']['fieldset']['default_value'])
+        ? $instance['settings']['fieldset']['default_value'] : ''),
+      '#empty_value'   => '',
+      '#empty_option'  => t('Select a relation type'),
+    );
+  }
+
   return $form;
 }
 
@@ -431,7 +513,7 @@ function relation_add_field_widget_settings_form($field, $instance) {
   $form['relation_endpoint_label'] = array(
     '#type' => 'select',
     '#title' => t('Endpoint label'),
-    '#default_value' => $settings['relation_endpoint_label'],
+    '#default_value' => isset($settings['relation_endpoint_label']) ? $settings['relation_endpoint_label'] : '',
     '#options' => $options,
     '#required' => TRUE,
     '#weight' => 5,
@@ -440,7 +522,7 @@ function relation_add_field_widget_settings_form($field, $instance) {
   $form['relation_endpoint_custom_label'] = array(
     '#type' => 'textfield',
     '#title' => t('Label'),
-    '#default_value' => $settings['relation_endpoint_custom_label'],
+    '#default_value' => isset($settings['relation_endpoint_custom_label']) ? $settings['relation_endpoint_custom_label'] : '',
     '#states' => array(
       'visible' => array(
         ':input[name="instance[widget][settings][relation_endpoint_label]"]' => array('value' => 'custom'),
@@ -452,7 +534,7 @@ function relation_add_field_widget_settings_form($field, $instance) {
   $form['relation_endpoint_label_delta'] = array(
     '#type' => 'checkbox',
     '#title' => t('Adding endpoint delta to the label'),
-    '#default_value' => $settings['relation_endpoint_label_delta'],
+    '#default_value' => isset($settings['relation_endpoint_label_delta']) ? $settings['relation_endpoint_label_delta'] : FALSE,
     '#weight' => 5,
   );
 
@@ -467,6 +549,11 @@ function relation_add_field_widget_info() {
     'relation_add' => array(
       'label' => t('Relation add widget'),
       'field types' => array('relation_add'),
+      'behaviors' => array(
+        // to tell field API to not display the base default value widget
+        // we provide our own
+        'default value' => FIELD_BEHAVIOR_NONE
+      ),
     ),
   );
 }
@@ -499,32 +586,40 @@ function relation_add_field_widget_form(&$form, &$form_state, $field, $instance,
   }
   elseif (count($instance['settings']['relation_type']) > 1) {
     foreach ($instance['settings']['relation_type'] as $rel_type) {
-      $relation_type = relation_type_load($rel_type);
-      $types[$rel_type] = $relation_type->label;
+      $type_array = explode(':', $rel_type);
+      $relation_type = relation_type_load($type_array[0]);
+      $types[$rel_type] = !isset($type_array[1]) ? $relation_type->label : $relation_type->reverse_label;
     }
   }
 
   ksort($types);
-  $wrapper = 'relation-add-options-' . $delta;
-  $form_element = array();
+  $wrapper = str_replace('_', '-', $instance['field_name']) . '-relation-add-options-' . $delta;
+  $form_element = array(
+    '#tree' => TRUE,
+  );
 
   if (!empty($types)) {
     if (isset($item['relation_type'])) {
-      if (isset($types[$item['relation_type']])) {
-        $type = $item['relation_type'];
-        $relation_reverse = FALSE;
-      }
-      elseif (isset($types[$item['relation_type'] . ':reverse'])) {
+      if (isset($types[$item['relation_type'] . ':reverse']) && $item['endpoints'][LANGUAGE_NONE][0]['entity_id'] != $item['my_entity_id']) {
         $type = $item['relation_type'] . ':reverse';
         $relation_reverse = TRUE;
       }
+      elseif (isset($types[$item['relation_type']])) {
+        $type = $item['relation_type'];
+        $relation_reverse = FALSE;
+      }
+    }
+    else if (isset($instance['settings']['fieldset']['default_value'])) {
+        $type = $instance['settings']['fieldset']['default_value'];
+        $type_array = explode(':', $type);
+        $relation_reverse = (isset($type_array[1]) && $type_array[1] == 'reverse');
     }
 
     $form_element['relation_type'] = array(
       '#type'          => 'select',
       '#title'         => t('Relation type'),
       '#options'       => $types,
-      '#default_value' => isset($default_type) ? $default_type : NULL,
+      '#default_value' => isset($type) ? $type : NULL,
       '#empty_value'   => '',
       '#empty_option'  => t('Select a relation type'),
       '#ajax' => array(
@@ -544,8 +639,15 @@ function relation_add_field_widget_form(&$form, &$form_state, $field, $instance,
 
   if (isset($form_state['triggering_element']['#ajax'])) {
     if (!empty($form_state['values'][$field['field_name']][$langcode][$delta]['relation_type'])) {
+      $form_state_relation_type = $form_state['values'][$field['field_name']][$langcode][$delta]['relation_type'];
+    }
+    elseif (!empty($form_state['input'][$field['field_name']][$langcode][$delta]['relation_type'])) {
+      $form_state_relation_type = $form_state['input'][$field['field_name']][$langcode][$delta]['relation_type'];
+    }
+
+    if (isset($form_state_relation_type)) {
       // Remove ':reverse' suffix if it exists, and set reverse flag
-      $type_array = explode(':', $form_state['values'][$field['field_name']][$langcode][$delta]['relation_type']);
+      $type_array = explode(':', $form_state_relation_type);
       $type = $type_array[0];
       $relation_reverse = (isset($type_array[1]) && $type_array[1] == 'reverse');
     }
@@ -565,7 +667,7 @@ function relation_add_field_widget_form(&$form, &$form_state, $field, $instance,
   $parents[] = 'relation_options';
   $form_element['relation_options'] = array(
     '#parents' => $parents,
-    '#prefix' => '<div id="relation-add-options-' . $delta . '">',
+    '#prefix' => '<div id="'.$wrapper.'">',
     '#suffix' => '</div>',
   );
 
@@ -591,8 +693,10 @@ function relation_add_field_widget_form(&$form, &$form_state, $field, $instance,
       }
     }
     else {
-      $relation_type = relation_type_load($type);
-      $relation = (object) relation_create($type, array());
+      // $type can also have the :reverse suffix here so we have to remove it
+      $type_array = explode(':', $type);
+      $relation_type = relation_type_load($type_array[0]);
+      $relation = (object) relation_create($type_array[0], array());
     }
 
     // Create one autocomplete for each endpoint beyond the first
@@ -613,6 +717,7 @@ function relation_add_field_widget_form(&$form, &$form_state, $field, $instance,
       $endpoint_title .= $instance['widget']['settings']['relation_endpoint_label_delta'] ? ' ' . ($i - 1) : '';
       $form_element['relation_options']['targets']['target_' . $i] = array(
         '#type' => 'textfield',
+        '#maxlength' => 320,
         '#title' => $endpoint_title,
         '#default_value' => isset($default_targets[$i]) ? $default_targets[$i] : '',
         '#autocomplete_path' => 'relation_add/autocomplete/' . $type . $direction,
@@ -669,6 +774,7 @@ function relation_add_field_update($entity_type, $entity, $field, $instance, $la
     if (isset($item['delete']) && $item['delete']) {
       if (isset($item['relation_options']['rid']) && $item['relation_options']['rid']) {
         relation_delete($item['relation_options']['rid']);
+        cache_clear_all('field', 'cache_field', TRUE);
       }
       continue;
     }
@@ -705,7 +811,7 @@ function relation_add_field_update($entity_type, $entity, $field, $instance, $la
       $entity_keys = array();
       foreach ($entity_strings as $r_index => $entity_string) {
         $matches = array();
-        preg_match('/([\w\s]*)\[([\w\d]+):(\d+)\]/', $entity_string, $matches);
+        preg_match('/(.*)\[([\w\d]+):(\d+)\]/', $entity_string, $matches);
         if ($matches) {
           $entity_keys[] = array(
             'entity_label' => $matches[1],
