@@ -278,6 +278,7 @@ function bg_image_add_background_image($image_path, $css_settings = array(), $im
   $repeat = isset($css_settings['bg_image_repeat']) ? $css_settings['bg_image_repeat'] : variable_get('bg_image_repeat', 'no-repeat');
   $important = isset($css_settings['bg_image_important']) ? $css_settings['bg_image_important'] : variable_get('bg_image_important', 1);
   $background_size = isset($css_settings['bg_image_background_size']) ? $css_settings['bg_image_background_size'] : variable_get('bg_image_background_size', '');
+  $media_query = isset($css_settings['bg_image_media_query']) ? $css_settings['bg_image_media_query'] : variable_get('bg_image_media_query', 'all');
 
   // Apply an Image Style?
   $image_style = $image_style ? $image_style : variable_get('bg_image_style', '');
@@ -325,7 +326,7 @@ function bg_image_add_background_image($image_path, $css_settings = array(), $im
     $style .= "background-position: $bg_x $bg_y $important;";
     $style .= $bg_size;
     $style .= "}";
-    drupal_add_css($style, array('type' => 'inline', 'media' => variable_get('bg_image_media_query', 'all'), 'group' => CSS_THEME));
+    drupal_add_css($style, array('type' => 'inline', 'media' => $media_query, 'group' => CSS_THEME));
     return TRUE;
   }
   else {
@@ -407,6 +408,7 @@ function bg_image_add_background_image_from_node($nid, $css_settings = array(), 
         ->fields('node', array('nid'))
         ->condition('node.type', $type)
         ->orderRandom()
+        ->addTag('node_access')
         ->execute()
         ->fetchField();
     }
@@ -414,19 +416,20 @@ function bg_image_add_background_image_from_node($nid, $css_settings = array(), 
       return FALSE;
     }
   }
+  elseif (is_numeric($nid)) {
+    // Load the node so we can check it's status
+    $node = node_load($nid);
+    // Check node access permissions
+    if (node_access('view', $node)) {
+      // Get the path of the image on the node
+      $image_path = bg_image_get_image_path_from_node($nid);
+      // Add the background image
+      return bg_image_add_background_image($image_path, $css_settings);
+    }
+  }
 
-  // Load the node so we can check it's status
-  $node = node_load($nid);
-  // Only add the image if it's published
-  if ($node->status == 1) {
-    // Get the path of the image on the node
-    $image_path = bg_image_get_image_path_from_node($nid);
-    // Add the background image
-    return bg_image_add_background_image($image_path, $css_settings);
-  }
-  else {
-    return FALSE;
-  }
+  // If all else fails
+  return FALSE;
 
 }
 

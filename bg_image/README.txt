@@ -58,7 +58,7 @@ bg_image_add_background_image($nid, $css_settings);
 The above php code would output the following css:
 
 @code
-body #wrapper {
+body #main {
   background: transparent url(http://example.com/sites/default/files/image.jpg) fixed no-repeat center center !important;
 }
 @endcode
