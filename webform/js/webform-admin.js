@@ -8,8 +8,8 @@ Drupal.behaviors.webformAdmin = {};
 Drupal.behaviors.webformAdmin.attach = function(context) {
   // On click or change, make a parent radio button selected.
   Drupal.webform.setActive(context);
-  // Update the template select list upon changing a template.
   Drupal.webform.updateTemplate(context);
+  // Update the template select list upon changing a template.
   // Select all link for file extensions.
   Drupal.webform.selectCheckboxesLink(context);
   // Enhance the normal tableselect.js file to support indentations.
@@ -23,13 +23,25 @@ Drupal.behaviors.webformAdmin.attach = function(context) {
 Drupal.webform = Drupal.webform || {};
 
 Drupal.webform.setActive = function(context) {
-  var setActive = function(e) {
+  var setActiveOnChange = function(e) {
     if ($(this).val()) {
       $(this).closest('.form-type-radio').find('input[type=radio]').attr('checked', true);
     }
     e.preventDefault();
   };
-  $('.webform-set-active', context).change(setActive);
+  var setActiveOnClick = function(e) {
+    $(this).closest('.form-type-radio').find('input[type=radio]').attr('checked', true);
+  };
+  $('.webform-inline-radio', context).click(setActiveOnClick);
+  $('.webform-set-active', context).change(setActiveOnChange);
+
+  // Firefox improperly selects the parent radio button when clicking inside
+  // a label that contains an input field. The only way of preventing this
+  // currently is to remove the "for" attribute on the label.
+  // See https://bugzilla.mozilla.org/show_bug.cgi?id=213519.
+  if (navigator.userAgent.match(/Firefox/)) {
+    $('.webform-inline-radio', context).removeAttr('for');
+  }
 };
 
 Drupal.webform.updateTemplate = function(context) {

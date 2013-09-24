@@ -20,11 +20,13 @@ function _webform_defaults_number() {
       'type' => 'textfield',
       'field_prefix' => '',
       'field_suffix' => '',
+      'disabled' => 0,
       'unique' => 0,
       'title_display' => 0,
       'description' => '',
       'attributes' => array(),
       'private' => FALSE,
+      'analysis' => FALSE,
       'min' => '',
       'max' => '',
       'step' => '',
@@ -98,6 +100,15 @@ function _webform_edit_number($component) {
     '#maxlength' => 127,
     '#weight' => 1.2,
     '#parents' => array('extra', 'field_suffix'),
+  );
+  $form['display']['disabled'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Disabled'),
+    '#return_value' => 1,
+    '#description' => t('Make this field non-editable. Useful for setting an unchangeable default value.'),
+    '#weight' => 11,
+    '#default_value' => $component['extra']['disabled'],
+    '#parents' => array('extra', 'disabled'),
   );
   $form['display']['decimals'] = array(
     '#type' => 'select',
@@ -251,14 +262,14 @@ function _webform_render_number($component, $value = NULL, $filter = TRUE) {
   $node = isset($component['nid']) ? node_load($component['nid']) : NULL;
 
   $element = array(
-    '#title' => $filter ? _webform_filter_xss($component['name']) : $component['name'],
+    '#title' => $filter ? webform_filter_xss($component['name']) : $component['name'],
     '#title_display' => $component['extra']['title_display'] ? $component['extra']['title_display'] : 'before',
-    '#default_value' => $filter ? _webform_filter_values($component['value'], $node, NULL, NULL, FALSE) : $component['value'],
+    '#default_value' => $filter ? webform_replace_tokens($component['value'], $node) : $component['value'],
     '#required' => $component['required'],
     '#weight' => $component['weight'],
-    '#field_prefix' => empty($component['extra']['field_prefix']) ? NULL : ($filter ? _webform_filter_xss($component['extra']['field_prefix']) : $component['extra']['field_prefix']),
-    '#field_suffix' => empty($component['extra']['field_suffix']) ? NULL : ($filter ? _webform_filter_xss($component['extra']['field_suffix']) : $component['extra']['field_suffix']),
-    '#description' => $filter ? _webform_filter_descriptions($component['extra']['description'], $node) : $component['extra']['description'],
+    '#field_prefix' => empty($component['extra']['field_prefix']) ? NULL : ($filter ? webform_filter_xss($component['extra']['field_prefix']) : $component['extra']['field_prefix']),
+    '#field_suffix' => empty($component['extra']['field_suffix']) ? NULL : ($filter ? webform_filter_xss($component['extra']['field_suffix']) : $component['extra']['field_suffix']),
+    '#description' => $filter ? webform_filter_descriptions($component['extra']['description'], $node) : $component['extra']['description'],
     '#attributes' => $component['extra']['attributes'],
     '#element_validate' => array('_webform_validate_number'),
     '#theme_wrappers' => array('webform_element'),
@@ -314,6 +325,16 @@ function _webform_render_number($component, $value = NULL, $filter = TRUE) {
   // Enforce uniqueness.
   if ($component['extra']['unique']) {
     $element['#element_validate'][] = 'webform_validate_unique';
+  }
+
+  // Set readonly if disabled.
+  if ($component['extra']['disabled']) {
+    if ($filter) {
+      $element['#attributes']['readonly'] = 'readonly';
+    }
+    else {
+      $element['#disabled'] = TRUE;
+    }
   }
 
   return $element;
@@ -414,13 +435,14 @@ function _webform_analysis_number($component, $sids = array(), $single = FALSE) 
   $average = _webform_number_format($component, $average);
   $sum = _webform_number_format($component, $sum);
 
-  $rows[0] = array(t('Zero/blank'), ($submissions - $nonzero));
-  $rows[1] = array(t('User entered value'), $not_empty);
-  $rows[2] = array(t('Sum') . ($advanced_stats ? ' (&Sigma;)' : ''), $sum);
-  $rows[3] = array($average_title, $average);
+  $rows[] = array(t('Zero/blank'), ($submissions - $nonzero));
+  $rows[] = array(t('User entered value'), $not_empty);
+
+  $other[] = array(t('Sum') . ($advanced_stats ? ' (&Sigma;)' : ''), $sum);
+  $other[] = array($average_title, $average);
 
   if (!$advanced_stats && $sum != 0) {
-    $rows[4] = array('', l(t('More stats »'), 'node/' . $component['nid'] . '/webform-results/analysis/' . $component['cid']));
+    $other[] = l(t('More stats »'), 'node/' . $component['nid'] . '/webform-results/analysis/' . $component['cid']);
   }
 
   // Normal distribution information.
@@ -440,7 +462,10 @@ function _webform_analysis_number($component, $sids = array(), $single = FALSE) 
 
     // Skip the rest of the distribution rows if standard deviation is 0.
     if (empty($stddev)) {
-      return $rows;
+      return array(
+        'table_rows' => $rows,
+        'other_data' => $other,
+      );
     }
 
     // Build normal distribution table rows.
@@ -491,14 +516,17 @@ function _webform_analysis_number($component, $sids = array(), $single = FALSE) 
     array_unshift($count, t('Count'));
     array_unshift($percent, t('% of !description', array('!description' => $description)));
 
-    $output = theme('table', array('header' => $header, 'rows' => array($limit, $count, $percent)));
+    $normal_distribution = theme('table', array('header' => $header, 'rows' => array($limit, $count, $percent)));
 
-    $rows[4] = array(t('Range'), t('!low to !high', array('!low' => $low, '!high' => $high)));
-    $rows[5] = array(t('Standard deviation (!sigma)', array('!sigma' => $sigma)), $stddev);
-    $rows[6] = array(array('data' => $output, 'colspan' => 2));
+    $other[] = array(t('Range'), t('!low to !high', array('!low' => $low, '!high' => $high)));
+    $other[] = array(t('Standard deviation (!sigma)', array('!sigma' => $sigma)), $stddev);
+    $other[] = $normal_distribution;
   }
 
-  return $rows;
+  return array(
+    'table_rows' => $rows,
+    'other_data' => $other,
+  );
 }
 
 /**
@@ -576,7 +604,7 @@ function _webform_validate_number($element, &$form_state) {
 
       // Step test.
       $starting_number = $element['#min'] ? $element['#min'] : 0;
-      if ($element['#step'] != 0 && fmod($element['#value'] - $starting_number, $element['#step']) != 0) {
+      if ($element['#step'] != 0 && webform_modulo($element['#value'] - $starting_number, $element['#step']) != 0) {
         $samples = array(
           $starting_number,
           $starting_number + ($element['#step'] * 1),
@@ -723,4 +751,13 @@ function _webform_number_format($component, $value) {
   }
 
   return number_format($value, $decimals, $component['extra']['point'], $component['extra']['separator']);
+}
+
+/**
+ * Custom modulo function that properly handles float division.
+ *
+ * See https://drupal.org/node/1601968.
+ */
+function webform_modulo($a, $b) {
+  return $a - $b * (($b < 0) ? ceil($a / $b) : floor($a / $b));
 }
