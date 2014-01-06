@@ -6,9 +6,9 @@ project = "bg_image_context"
 dependencies[] = "bg_image"
 dependencies[] = "context"
 
-; Information added by drupal.org packaging script on 2013-10-24
-version = "7.x-1.2"
+; Information added by Drupal.org packaging script on 2013-12-14
+version = "7.x-1.3"
 core = "7.x"
 project = "bg_image"
-datestamp = "1382645426"
+datestamp = "1386980605"
 

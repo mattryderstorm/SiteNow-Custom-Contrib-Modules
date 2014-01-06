@@ -17,7 +17,7 @@ function bg_image_ui_menu() {
     'page arguments' => array('bg_image_ui_paths_form'),
     'access arguments' => array('manage background images'),
     'file' => NULL,
-    'type' => MENU_LOCAL_TASK,
+    'type' => MENU_LOCAL_TASK | MENU_NORMAL_ITEM,
   );
 
   $items['admin/content/background-images/path/remove/%'] = array(
@@ -76,9 +76,10 @@ function bg_image_ui_paths_form($form, &$form_state) {
 
   // If a node type and field has not been configured
   if (!variable_get('bg_image_node_type', '') || !variable_get('bg_image_node_field', '')) {
-    return $form['settings_first_msg'] = array(
+    $form['settings_first_msg'] = array(
       '#markup' => 'You must specify a content type and field on the <a href="/admin/config/content/background_image">settings page</a> before you can set background images. Once configured you will be able to reference specific nodes here, whose image field will be used to set the background image.',
     );
+    return $form;
   }
 
   $form = array(
@@ -123,7 +124,7 @@ function bg_image_ui_paths_form($form, &$form_state) {
     // Add a blank line for new bg images
     $form['items'][0]['path'] = array(
       '#type' => 'textfield',
-      '#description' => t('Enter a path that the background image will be active on.<br/> Paths will be relative to the domain root.<br/> Do not include a preceeding "/".<br/> Wildcards can be used by specifying "*". e.g. node/*'),
+      '#description' => t('Enter a path that the background image will be active on.<br/> Paths will be relative to the domain root.<br/> Do not include a preceeding "/".<br/> Use &lt;front&gt; for the front page.<br/> Wildcards can be used by specifying "*". e.g. node/*'),
       '#default_value' => isset($_GET['bg_image_path']) ? $_GET['bg_image_path'] : '',
     );
     $form['items'][0]['nid'] = array(
