@@ -5,7 +5,7 @@ Integrates the FlexSlider library into Drupal.
 Known Issues
 ------------
 
-- IE10 requires an updated version of jQuery to work properly with FlexSlider. Please see http://drupal.org/project/jquery_update
+-IE10 requires an updated version of jQuery to work properly with FlexSlider. Please see http://drupal.org/project/jquery_update
 
 Current Options
 ---------------
@@ -93,10 +93,10 @@ You can toggle the development version of the library in the administrative sett
 
 ### Image Width/Height Attributes
 
-If your images aren't resizing, ensure the width and height attributes are removed. The module will attempt to remove them automatically on any image matching the pattern 
+If your images aren't resizing, ensure the width and height attributes are removed. The module will attempt to remove them automatically on any image matching the pattern
 
     ul.slides > li > img
-    
+
 
 
 Export API
