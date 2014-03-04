@@ -1,0 +1,479 @@
+diff --git a/mappers/file.inc b/mappers/file.inc
+index 646d055..aa967b9 100644
+--- a/mappers/file.inc
++++ b/mappers/file.inc
+@@ -4,27 +4,39 @@
+  * @file
+  * On behalf implementation of Feeds mapping API for file.module and
+  * image.module.
+- *
+- * Does actually not include mappers for field types defined in fields module
+- * (because there aren't any) but mappers for all fields that contain their
+- * value simply in $entity->fieldname['und'][$i]['value'].
+  */
+ 
+ /**
+  * Implements hook_feeds_processor_targets_alter().
+  *
+- * @see FeedsNodeProcessor::getMappingTargets().
++ * @see FeedsNodeProcessor::getMappingTargets()
+  */
+ function file_feeds_processor_targets_alter(&$targets, $entity_type, $bundle_name) {
+   foreach (field_info_instances($entity_type, $bundle_name) as $name => $instance) {
+     $info = field_info_field($name);
+ 
+     if (in_array($info['type'], array('file', 'image'))) {
+-      $targets[$name] = array(
+-        'name' => check_plain($instance['label']),
++      $targets[$name . ':uri'] = array(
++        'name' => t('@label: URI', array('@label' => $instance['label'])),
+         'callback' => 'file_feeds_set_target',
+-        'description' => t('The @label field of the node.', array('@label' => $instance['label'])),
++        'description' => t('The URI of the @label field.', array('@label' => $instance['label'])),
++        'real_target' => $name,
+       );
++
++      if ($info['type'] == 'image') {
++        $targets[$name . ':alt'] = array(
++          'name' => t('@label: Alt', array('@label' => $instance['label'])),
++          'callback' => 'file_feeds_set_target',
++          'description' => t('The alt tag of the @label field.', array('@label' => $instance['label'])),
++          'real_target' => $name,
++        );
++        $targets[$name . ':title'] = array(
++          'name' => t('@label: Title', array('@label' => $instance['label'])),
++          'callback' => 'file_feeds_set_target',
++          'description' => t('The title of the @label field.', array('@label' => $instance['label'])),
++          'real_target' => $name,
++        );
++      }
+     }
+   }
+ }
+@@ -40,56 +52,82 @@ function file_feeds_set_target($source, $entity, $target, $value) {
+   if (empty($value)) {
+     return;
+   }
+-  module_load_include('inc', 'file');
+ 
+   // Make sure $value is an array of objects of type FeedsEnclosure.
+   if (!is_array($value)) {
+     $value = array($value);
+   }
+-  foreach ($value as $k => $v) {
+-    if (!($v instanceof FeedsEnclosure)) {
+-      if (is_string($v)) {
+-        $value[$k] = new FeedsEnclosure($v, file_get_mimetype($v));
+-      }
+-      else {
+-        unset($value[$k]);
++
++  // Add default of uri for backwards compatibility.
++  list($field_name, $sub_field) = explode(':', $target . ':uri');
++  $info = field_info_field($field_name);
++
++  if ($sub_field == 'uri') {
++
++    foreach ($value as $k => $v) {
++      if (!($v instanceof FeedsEnclosure)) {
++        if (is_string($v)) {
++          $value[$k] = new FeedsEnclosure($v, file_get_mimetype($v));
++        }
++        else {
++          unset($value[$k]);
++        }
+       }
+     }
+-  }
+-  if (empty($value)) {
+-    return;
+-  }
++    if (empty($value)) {
++      return;
++    }
++
++    static $destination;
++    if (!$destination) {
++      $entity_type = $source->importer->processor->entityType();
++      $bundle = $source->importer->processor->bundle();
+ 
+-  $entity_type = $source->importer->processor->entityType();
++      $instance_info = field_info_instance($entity_type, $field_name, $bundle);
+ 
+-  // Determine file destination.
+-  // @todo This needs review and debugging.
+-  $instance_info = field_info_instance($entity_type, $target, $source->importer->processor->bundle());
+-  $info = field_info_field($target);
+-  $data = array();
+-  if (!empty($entity->uid)) {
+-    $data[$entity_type] = $entity;
++      // Determine file destination.
++      // @todo This needs review and debugging.
++      $data = array();
++      if (!empty($entity->uid)) {
++        $data[$entity_type] = $entity;
++      }
++      $destination = file_field_widget_uri($info, $instance_info, $data);
++    }
+   }
+-  $destination = file_field_widget_uri($info, $instance_info, $data);
+ 
+   // Populate entity.
+-  $i = 0;
+-  $field = isset($entity->$target) ? $entity->$target : array();
++  $field = isset($entity->$field_name) ? $entity->$field_name : array(LANGUAGE_NONE => array());
++  $delta = 0;
+   foreach ($value as $v) {
+-    try {
+-      $file = $v->getFile($destination);
++    if ($info['cardinality'] == $delta) {
++      break;
+     }
+-    catch (Exception $e) {
+-      watchdog_exception('Feeds', $e, nl2br(check_plain($e)));
++
++    if (!isset($field[LANGUAGE_NONE][$delta])) {
++      $field[LANGUAGE_NONE][$delta] = array();
+     }
+-    if ($file) {
+-      $field['und'][$i] = (array)$file;
+-      $field['und'][$i]['display'] = 1; // @todo: Figure out how to properly populate this field.
+-      if ($info['cardinality'] == 1) {
++
++    switch ($sub_field) {
++      case 'alt':
++      case 'title':
++        $field[LANGUAGE_NONE][$delta][$sub_field] = $v;
++        break;
++
++      case 'uri':
++        try {
++          $file = $v->getFile($destination);
++          $field[LANGUAGE_NONE][$delta] += (array) $file;
++          // @todo: Figure out how to properly populate this field.
++          $field[LANGUAGE_NONE][$delta]['display'] = 1;
++        }
++        catch (Exception $e) {
++          watchdog_exception('Feeds', $e, nl2br(check_plain($e)));
++        }
+         break;
+-      }
+-      $i++;
+     }
++
++    $delta++;
+   }
+-  $entity->{$target} = $field;
++
++  $entity->$field_name = $field;
+ }
+diff --git a/tests/feeds.test b/tests/feeds.test
+index 480a5db..d54d56c 100644
+--- a/tests/feeds.test
++++ b/tests/feeds.test
+@@ -18,11 +18,11 @@ class FeedsWebTestCase extends DrupalWebTestCase {
+     // array of module names to setUp().
+     if (isset($args[0])) {
+       if (is_array($args[0])) {
+-      $modules = $args[0];
+-    }
++        $modules = $args[0];
++      }
+       else {
+-      $modules = $args;
+-    }
++        $modules = $args;
++      }
+     }
+     else {
+       $modules = array();
+diff --git a/tests/feeds/feeds-tests-files.tpl.php b/tests/feeds/feeds-tests-files.tpl.php
+index 9674abb..a4ca2f9 100644
+--- a/tests/feeds/feeds-tests-files.tpl.php
++++ b/tests/feeds/feeds-tests-files.tpl.php
+@@ -1,6 +1,6 @@
+-Title,published,file,GUID
+-"Tubing is awesome",205200720,<?php print $files[0]; ?>,0
+-"Jeff vs Tom",428112720,<?php print $files[1]; ?>,1
+-"Attersee",1151766000,<?php print $files[2]; ?>,2
+-"H Street NE",1256326995,<?php print $files[3]; ?>,3
+-"La Fayette Park",1256326995,<?php print $files[4]; ?>,4
++Title,published,file,GUID,alt,title2
++"Tubing is awesome",205200720,<?php print $files[0]; ?>,0,Alt text 0,Title text 0
++"Jeff vs Tom",428112720,<?php print $files[1]; ?>,1,Alt text 1,Title text 1
++"Attersee",1151766000,<?php print $files[2]; ?>,2,Alt text 2,Title text 2
++"H Street NE",1256326995,<?php print $files[3]; ?>,3,Alt text 3,Title text 3
++"La Fayette Park",1256326995,<?php print $files[4]; ?>,4,Alt text 4,Title text 4
+diff --git a/tests/feeds_mapper.test b/tests/feeds_mapper.test
+index a570dfa..81665b6 100644
+--- a/tests/feeds_mapper.test
++++ b/tests/feeds_mapper.test
+@@ -19,8 +19,8 @@ class FeedsMapperTestCase extends FeedsWebTestCase {
+     'email' => 'email_textfield',
+     'emimage' => 'emimage_textfields',
+     'emaudio' => 'emaudio_textfields',
+-    'filefield' => 'filefield_widget',
+-    'image' => 'imagefield_widget',
++    'file' => 'file_generic',
++    'image' => 'image_image',
+     'link_field' => 'link_field',
+     'number_float' => 'number',
+     'number_integer' => 'number',
+diff --git a/tests/feeds_mapper_file.test b/tests/feeds_mapper_file.test
+index 20c7912..de216ff 100644
+--- a/tests/feeds_mapper_file.test
++++ b/tests/feeds_mapper_file.test
+@@ -7,10 +7,6 @@
+ 
+ /**
+  * Class for testing Feeds file mapper.
+- *
+- * @todo Add a test for enclosures using a local file that is
+- *   a) in place and that
+- *   b) needs to be copied from one location to another.
+  */
+ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+   public static function getInfo() {
+@@ -25,12 +21,12 @@ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+    * Basic test loading a single entry CSV file.
+    */
+   public function test() {
+-    // If this is unset (or FALSE) http_request.inc will use curl, and will generate a 404
+-    // for this feel url provided by feeds_tests. However, if feeds_tests was enabled in your
+-    // site before running the test, it will work fine. Since it is truly screwy, lets just
+-    // force it to use drupal_http_request for this test case.
++    // If this is unset (or FALSE) http_request.inc will use curl, and will
++    // generate a 404 for this feel url provided by feeds_tests. However, if
++    // feeds_tests was enabled in your site before running the test, it will
++    // work fine. Since it is truly screwy, lets just force it to use
++    // drupal_http_request for this test case.
+     variable_set('feeds_never_use_curl', TRUE);
+-    variable_set('clean_url', TRUE);
+ 
+     // Only download simplepie if the plugin doesn't already exist somewhere.
+     // People running tests locally might have it.
+@@ -51,15 +47,15 @@ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+     $this->addMappings('syndication', array(
+       0 => array(
+         'source' => 'title',
+-        'target' => 'title'
++        'target' => 'title',
+       ),
+       1 => array(
+         'source' => 'timestamp',
+-        'target' => 'created'
++        'target' => 'created',
+       ),
+       2 => array(
+         'source' => 'enclosures',
+-        'target' => 'field_files'
++        'target' => 'field_files:uri',
+       ),
+     ));
+     $nid = $this->createFeedNode('syndication', $GLOBALS['base_url'] . '/testing/feeds/flickr.xml');
+@@ -95,17 +91,17 @@ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+     $this->addMappings('node', array(
+       0 => array(
+         'source' => 'title',
+-        'target' => 'title'
++        'target' => 'title',
+       ),
+       1 => array(
+         'source' => 'file',
+-        'target' => 'field_files'
++        'target' => 'field_files:uri',
+       ),
+     ));
+ 
+     // Import.
+     $edit = array(
+-      'feeds[FeedsHTTPFetcher][source]' => $GLOBALS['base_url'] . '/testing/feeds/files.csv',
++      'feeds[FeedsHTTPFetcher][source]' => url('testing/feeds/files.csv', array('absolute' => TRUE)),
+     );
+     $this->drupalPost('import/node', $edit, 'Import');
+     $this->assertText('Created 5 nodes');
+@@ -116,6 +112,7 @@ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+       ->fields('feeds_item', array('entity_id'))
+       ->condition('id', 'node')
+       ->execute();
++
+     foreach ($entities as $entity) {
+       $this->drupalGet('node/' . $entity->entity_id . '/edit');
+       $f = new FeedsEnclosure(array_shift($files), NULL);
+@@ -142,6 +139,7 @@ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+       ->fields('feeds_item', array('entity_id'))
+       ->condition('id', 'node')
+       ->execute();
++
+     foreach ($entities as $entity) {
+       $this->drupalGet('node/' . $entity->entity_id . '/edit');
+       $f = new FeedsEnclosure(array_shift($files), NULL);
+@@ -149,29 +147,79 @@ class FeedsMapperFileTestCase extends FeedsMapperTestCase {
+     }
+ 
+     // Deleting all imported items will delete the files from the images/ dir.
+-    // @todo: for some reason the first file does not get deleted.
+-//    $this->drupalPost('import/node/delete-items', array(), 'Delete');
+-//    foreach ($this->_testFiles() as $file) {
+-//      $this->assertFalse(is_file("public://images/$file"));
+-//    }
++    $this->drupalPost('import/node/delete-items', array(), 'Delete');
++    foreach ($this->_testFiles() as $file) {
++      $this->assertFalse(is_file("public://images/$file"));
++    }
+   }
+ 
+   /**
+-   * Lists test files.
++   * Tests mapping to an image field.
+    */
+-  public function _testFiles() {
+-    return array('tubing.jpeg', 'foosball.jpeg', 'attersee.jpeg', 'hstreet.jpeg', 'la fayette.jpeg');
++  public function testImages() {
++    variable_set('feeds_never_use_curl', TRUE);
++
++    $typename = $this->createContentType(array(), array('images' => 'image'));
++
++    // Enable title and alt mapping.
++    $edit = array(
++      'instance[settings][alt_field]' => 1,
++      'instance[settings][title_field]' => 1,
++    );
++    $this->drupalPost("admin/structure/types/manage/$typename/fields/field_images", $edit, t('Save settings'));
++
++    // Create a CSV importer configuration.
++    $this->createImporterConfiguration('Node import from CSV', 'image_test');
++    $this->setPlugin('image_test', 'FeedsCSVParser');
++    $this->setSettings('image_test', 'FeedsNodeProcessor', array('bundle' => $typename));
++    $this->setSettings('image_test', NULL, array('content_type' => ''));
++    $this->addMappings('image_test', array(
++      0 => array(
++        'source' => 'title',
++        'target' => 'title',
++      ),
++      1 => array(
++        'source' => 'file',
++        'target' => 'field_images:uri',
++      ),
++      2 => array(
++        'source' => 'title2',
++        'target' => 'field_images:title',
++      ),
++      3 => array(
++        'source' => 'alt',
++        'target' => 'field_images:alt',
++      ),
++    ));
++
++    // Import.
++    $edit = array(
++      'feeds[FeedsHTTPFetcher][source]' => url('testing/feeds/files-remote.csv', array('absolute' => TRUE)),
++    );
++    $this->drupalPost('import/image_test', $edit, 'Import');
++    $this->assertText('Created 5 nodes');
++
++    // Assert files exist.
++    $files = $this->_testFiles();
++    $entities = db_select('feeds_item')
++      ->fields('feeds_item', array('entity_id'))
++      ->condition('id', 'image_test')
++      ->execute();
++
++    foreach ($entities as $i => $entity) {
++      $this->drupalGet('node/' . $entity->entity_id . '/edit');
++      $f = new FeedsEnclosure(array_shift($files), NULL);
++      $this->assertRaw($f->getUrlEncodedValue());
++      $this->assertRaw("Alt text $i");
++      $this->assertRaw("Title text $i");
++    }
+   }
+ 
+   /**
+-   * Handle file field widgets.
++   * Lists test files.
+    */
+-  public function selectFieldWidget($fied_name, $field_type) {
+-    if ($field_type == 'file') {
+-      return 'file_generic';
+-    }
+-    else {
+-      return parent::selectFieldWidget($fied_name, $field_type);
+-    }
++  public function _testFiles() {
++    return array('tubing.jpeg', 'foosball.jpeg', 'attersee.jpeg', 'hstreet.jpeg', 'la fayette.jpeg');
+   }
++
+ }
+diff --git a/tests/feeds_tests.module b/tests/feeds_tests.module
+index ade38b2..f317c45 100644
+--- a/tests/feeds_tests.module
++++ b/tests/feeds_tests.module
+@@ -19,6 +19,11 @@ function feeds_tests_menu() {
+     'access arguments' => array('access content'),
+     'type' => MENU_CALLBACK,
+   );
++  $items['testing/feeds/files-remote.csv'] = array(
++    'page callback' => 'feeds_tests_files_remote',
++    'access arguments' => array('access content'),
++    'type' => MENU_CALLBACK,
++  );
+   return $items;
+ }
+ 
+@@ -53,7 +58,7 @@ function feeds_tests_flickr() {
+   );
+   $path = drupal_get_path('module', 'feeds_tests') . '/feeds/assets';
+   foreach ($images as &$image) {
+-    $image = url("$path/$image", array('absolute' => TRUE));
++    $image = file_create_url("$path/$image");
+   }
+   drupal_add_http_header('Content-Type', 'application/rss+xml; charset=utf-8');
+   print theme('feeds_tests_flickr', array('image_urls' => $images));
+@@ -77,6 +82,26 @@ function feeds_tests_files() {
+   print theme('feeds_tests_files', array('files' => $images));
+ }
+ 
++
++/**
++ * Outputs a CSV file pointing to files to download.
++ */
++function feeds_tests_files_remote() {
++  $images = array(
++    0 => 'tubing.jpeg',
++    1 => 'foosball.jpeg',
++    2 => 'attersee.jpeg',
++    3 => 'hstreet.jpeg',
++    4 => 'la fayette.jpeg',
++  );
++  $path = drupal_get_path('module', 'feeds_tests') . '/feeds/assets';
++  foreach ($images as &$image) {
++    $image = file_create_url("$path/$image");
++  }
++  drupal_add_http_header('Content-Type', 'text/plain; charset=utf-8');
++  print theme('feeds_tests_files', array('files' => $images));
++}
++
+ /**
+  * Implements hook_feeds_processor_targets_alter()
+  */
+@@ -96,7 +121,7 @@ function feeds_tests_feeds_processor_targets_alter(&$targets, $entity_type, $bun
+  * @see my_module_set_target()
+  */
+ function feeds_tests_mapper_set_target($source, $entity, $target, $value, $mapping) {
+-  $entity->body['und'][0]['value'] = serialize($mapping); 
++  $entity->body['und'][0]['value'] = serialize($mapping);
+ }
+ 
+ /**
+@@ -106,9 +131,9 @@ function feeds_tests_mapper_set_target($source, $entity, $target, $value, $mappi
+  */
+ function feeds_tests_mapper_summary($mapping, $target, $form, $form_state) {
+   $options = array(
+-    'option1' => t('Option 1'), 
++    'option1' => t('Option 1'),
+     'option2' => t('Another Option'),
+-    'option3' => t('Option for select'), 
++    'option3' => t('Option for select'),
+     'option4' => t('Another One')
+   );
+ 
