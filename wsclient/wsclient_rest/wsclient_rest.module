@@ -38,7 +38,8 @@ class WSClientRESTEndpoint extends WSClientEndpoint {
   public function client() {
     if (!isset($this->client)) {
       if (isset($this->service->settings['formatter'])) {
-        $this->client = new HttpClient(NULL, $this->service->settings['formatter']);
+        $formatter = new $this->service->settings['formatter']();
+        $this->client = new HttpClient(NULL, $formatter);
       }
       else {
         $this->client = new HttpClient(NULL, new HttpClientBaseFormatter(HttpClientBaseFormatter::FORMAT_JSON));
@@ -86,12 +87,6 @@ class WSClientRESTEndpoint extends WSClientEndpoint {
     }
     catch (HttpClientException $e) {
       throw new WSClientException('Error invoking the REST service %name, operation %operation: %error', array('%name' => $this->service->label, '%operation' => $operation_name, '%error' => $e->getMessage()));
-    }
-  }
-
-  public function entities() {
-    if (!empty($this->service->settings['resources'])) {
-      return $this->service->settings['resources'];
     }
   }
 

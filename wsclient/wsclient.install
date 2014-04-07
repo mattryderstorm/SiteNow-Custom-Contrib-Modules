@@ -45,12 +45,14 @@ function wsclient_schema() {
         'type' => 'text',
         'not null' => FALSE,
         'serialize' => TRUE,
+        'size' => 'medium',
         'description' => 'The operations this web service offers.',
       ),
       'datatypes' => array(
         'type' => 'text',
         'not null' => FALSE,
         'serialize' => TRUE,
+        'size' => 'medium',
         'description' => 'The complex data types used in the operations.',
       ),
       'global_parameters' => array(
@@ -98,53 +100,6 @@ function wsclient_schema() {
       'name' => array('name'),
     ),
   );
-  $schema['wsclient_info'] = array(
-    'fields' => array(
-      'name' => array(
-        'type' => 'varchar',
-        'length' => '32',
-        'not null' => TRUE,
-        'description' => 'The name of the web service.',
-      ),
-      'info' => array(
-        'type' => 'text',
-        'not null' => FALSE,
-        'serialize' => TRUE,
-        'size' => 'big',
-        'description' => 'May be used to store endpoint provided information.',
-      ),
-      'token' => array(
-        'type' => 'varchar',
-        'length' => '255',
-        'not null' => TRUE,
-        'description' => 'The request token needed to check for valid notifications.',
-      ),
-    ),
-    'primary key' => array('name'),
-    'foreign keys' => array(
-      'name' => array('wsclient_service' => 'name'),
-    ),
-  );
-  $schema['wsclient_subscriptions'] = array(
-    'fields' => array(
-      'name' => array(
-        'type' => 'varchar',
-        'length' => '32',
-        'not null' => TRUE,
-        'description' => 'The name of the web service.',
-      ),
-      'event' => array(
-        'type' => 'varchar',
-        'length' => '255',
-        'not null' => TRUE,
-        'description' => 'An event of the web service we are subscribed to.',
-      ),
-    ),
-    'primary key' => array('name', 'event'),
-    'foreign keys' => array(
-      'name' => array('wsclient_service' => 'name'),
-    ),
-  );
   return $schema;
 }
 
@@ -179,4 +134,32 @@ function wsclient_update_7101() {
       'description' => 'The global parameters definition of this web service.',
     ));
   }
+}
+
+/**
+ * Increase size of datatypes and operations columns to medium.
+ */
+function wsclient_update_7102() {
+  db_change_field('wsclient_service', 'datatypes', 'datatypes', array(
+    'type' => 'text',
+    'not null' => FALSE,
+    'serialize' => TRUE,
+    'size' => 'medium',
+    'description' => 'The complex data types used in the operations.',
+  ));
+  db_change_field('wsclient_service', 'operations', 'operations', array(
+    'type' => 'text',
+    'not null' => FALSE,
+    'serialize' => TRUE,
+    'size' => 'medium',
+    'description' => 'The operations this web service offers.',
+  ));
+}
+
+/**
+ * Remove unused subscription database tables.
+ */
+function wsclient_update_7103() {
+  db_drop_table('wsclient_info');
+  db_drop_table('wsclient_subscriptions');
 }
