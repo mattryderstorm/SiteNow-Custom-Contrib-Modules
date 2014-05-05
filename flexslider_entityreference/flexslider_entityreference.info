@@ -6,9 +6,9 @@ package = FlexSlider
 dependencies[] = flexslider (2.x)
 dependencies[] = entityreference
 
-; Information added by drupal.org packaging script on 2013-03-09
-version = "7.x-1.0-rc1"
+; Information added by Drupal.org packaging script on 2014-04-24
+version = "7.x-1.1"
 core = "7.x"
 project = "flexslider_entityreference"
-datestamp = "1362852614"
+datestamp = "1398373429"
 
