@@ -9,13 +9,13 @@
 define('NODE_REVISION_DELETE_TIME', 'never');
 define('NODE_REVISION_DELETE_CRON', 50);
 define('NODE_REVISION_DELETE_NUMBER', 50);
-define('NODE_REVISION_DELETE_DISABLED', FALSE);
 define('NODE_REVISION_DELETE_TRACK', 0);
 
 /**
  * Implements hook_help().
  */
 function node_revision_delete_help($path, $arg) {
+  $output = NULL;
   switch ($path) {
     case 'admin/help#node_revision_delete':
       $output = '';
@@ -27,9 +27,8 @@ function node_revision_delete_help($path, $arg) {
       $output .= '<dd>' . t('Set the time to execute the Script') . '</dd>';
       $output .= '<dd>' . t('Select the Content type for which the revision delete will work') . '</dd>';
       $output .= '</dl>';
-      return $output;
-      break;
   }
+  return $output;
 }
 
 /**
@@ -47,11 +46,9 @@ function node_revision_delete_permission() {
  * Implements hook_menu().
  */
 function node_revision_delete_menu() {
-  $items = array();
-
   $items['admin/config/content/node_revision_delete'] = array(
-    'title' => 'Node Revision Delete Configuration',
-    'description' => 'Configuration for Node Revision',
+    'title' => 'Node Revision Delete',
+    'description' => 'Settings for automatically deleting node revisions.',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('node_revision_delete_form'),
     'access arguments' => array('administer node_revision_delete'),
@@ -142,56 +139,68 @@ function node_revision_delete_cron() {
   }
 
   if ($execute_revision_delete) {
-    $deleted = _node_revision_delete_do_delete();
-    drupal_set_message(t('Deleted @total revisions.', array('@total' => count($deleted))));
+    $max = variable_get('node_revision_delete_cron', NODE_REVISION_DELETE_CRON);
+    $tracked_content_types = node_revision_delete_content_types();
+    // Flag used to count how many have been deleted in this cron run.
+    $total_deleted = 0;
+    foreach (node_revision_delete_content_types() as $content_type => $revisions_to_keep) {
+      $candidate_nids = node_revision_delete_candidates($content_type, $revisions_to_keep);
+      if (!empty($candidate_nids)) {
+        foreach ($candidate_nids as $nid) {
+          $deleted_revisions = _node_revision_delete_do_delete($nid, $revisions_to_keep, $max);
+          $total_deleted += $deleted_revisions->count;
+          if ($total_deleted >= $max) {
+            break 2;
+          }
+        }
+      }
+    }
+    drupal_set_message(t('Deleted @total revisions.', array('@total' => $total_deleted)));
   }
 }
 
 /**
  * Private function to perform revision deletion.
  *
- * @return array
- *   The array of deleted revisions.
+ * @param int $nid
+ *   nid of the node whoose oldest revisions will be deleted.
+ * @param int $revisions_to_keep
+ *   int max amount of revisions to keep for this node.
+ * @param int $max
+ *   int maximum amount of revisions to delete per run. Defaults to 50.
+ *   may be increased or decreased for performance.
+ *
+ * @return object
+ *   stdClass with list containing an array of deleted revisions
+ *   and pending containing a boolean where TRUE means that there
+ *   are more revisions to delete for this node.
  */
-function _node_revision_delete_do_delete() {
-  $tracked_content_types = node_revision_delete_content_types();
-  if (empty($tracked_content_types)) {
-    return array();
-  }
-  $max = variable_get('node_revision_delete_cron', NODE_REVISION_DELETE_CRON);
-  // Start by selecting candidate nodes.
-  $result = db_query('SELECT n.type, n.nid, count(*) as total
-                     FROM {node} n
-                     INNER JOIN {node_revision} r ON r.nid = n.nid
-                     WHERE n.type IN (:content_types)
-                     GROUP BY r.nid
-                     HAVING total > 1
-                     ORDER BY total DESC', array(
-                       ':content_types' => array_keys($tracked_content_types),
-                     ));
-  $counter = 0;
-  $deleted = array();
-  foreach ($result as $row) {
-    $node = new stdClass();
-    $node->nid = $row->nid;
-    $revisions = node_revision_list($node);
-    // Keep recent revisions.
-    $revisions = array_slice($revisions, $tracked_content_types[$row->type]);
-    // Reverse the list so we start deleting oldest revisions first.
-    $revisions = array_reverse($revisions);
-    foreach ($revisions as $revision) {
-      $revision_id = $revision->vid;
-      node_revision_delete($revision_id);
-      $counter++;
-      $deleted[] = $revision;
+function _node_revision_delete_do_delete($nid, $revisions_to_keep, $max = 50) {
+  $node = new stdClass();
+  $node->nid = $nid;
+  $revisions = node_revision_list($node);
+  // Keep recent revisions.
+  $revisions = array_slice($revisions, $revisions_to_keep);
+  // Reverse the list so we start deleting oldest revisions first.
+  $revisions = array_reverse($revisions);
+  // POPO to keep track of deleted revisions and whether there are more
+  // to be deleted on a next run.
+  $deleted_revisions = new stdClass();
+  $deleted_revisions->count = 0;
+  $deleted_revisions->pending = FALSE;
+  foreach ($revisions as $revision) {
+    $revision_id = $revision->vid;
+    if (node_revision_delete($revision_id)) {
+      $deleted_revisions->count++;
       // Stop deleting if we hit the limit per cron run.
-      if ($counter == $max) {
-        break 2;
+      if ($deleted_revisions->count == $max) {
+        $deleted_revisions->pending = TRUE;
+        break;
       }
     }
   }
 
-  return $deleted;
+  return $deleted_revisions;
 }
 
 /**
@@ -211,33 +220,59 @@ function node_revision_delete_content_types() {
 }
 
 /**
+ * Helper function to return the list of candidate nids.
+ *
+ * @param string $content_type
+ *   A content type machine name.
+ *
+ * @param int $max_revisions
+ *   Match nodes with a total amount of revisions higher than this number.
+ *
+ * @return array
+ *   Array of nids.
+ */
+function node_revision_delete_candidates($content_type, $max_revisions) {
+  $result = db_query('SELECT n.nid, count(*) as total
+                     FROM {node} n
+                     INNER JOIN {node_revision} r ON r.nid = n.nid
+                     WHERE n.type = :content_type
+                     GROUP BY r.nid
+                     HAVING total > :max_revisions
+                     ORDER BY total DESC', array(
+                       ':content_type' => $content_type,
+                       ':max_revisions' => $max_revisions,
+  ));
+  return $result->fetchCol();
+}
+
+/**
  * Implements hook_form().
  */
 function node_revision_delete_form($form, &$form_state) {
-  $instructions = <<<EOL
-      <p>To allow Node Revision Delete to act upon a certain content type, you
-        should navigate to that content type's edit page via Structure >
-        Content types > [content type] > edit. Under <em>Publishing Options</em>,
-        enable <em>Create new revision</em> and <em>Limit the amount of revisions for this content type</em>.
-        Change the number at <em>Maximum number of revisions to keep</em> if you
-        need to and finally save your changes.</p>
-EOL;
 
   $form['instruction'] = array(
-    '#markup' => t($instructions),
+    '#markup' => t("<p>To allow Node Revision Delete to act upon a certain content type, you should navigate to that content type's edit page via Structure > Content types > [content type] > edit. Under <em>Publishing Options</em>, enable <em>Create new revision</em> and <em>Limit the amount of revisions for this content type</em>. Change the number at <em>Maximum number of revisions to keep</em>, if you need to, and finally, save your changes.</p>"),
   );
 
   // List tracked content types.
-  $tracked_header = array('Content Type', 'Machine Name', 'Revisions to Keep', '&nbsp;');
+  $tracked_header = array(
+    'Content Type',
+    'Machine Name',
+    'Revisions to Keep',
+    'Candidate nodes',
+    '&nbsp;',
+  );
   $tracked_content_types = node_revision_delete_content_types();
   if (!empty($tracked_content_types)) {
     $rows = array();
     foreach (node_type_get_names() as $type => $name) {
       if (array_key_exists($type, $tracked_content_types)) {
+        $candidate_nids = count(node_revision_delete_candidates($type, $tracked_content_types[$type]));
         $rows[] = array(
           $name,
           $type,
-          (int) $tracked_content_types[$type],
+          $tracked_content_types[$type],
+          $candidate_nids,
           l(t('edit'), 'admin/structure/types/manage/' . $type),
         );
       }
@@ -253,8 +288,7 @@ EOL;
   $form['node_revision_delete_cron'] = array(
     '#type' => 'select',
     '#title' => t('How many revisions do you want to delete per cron run?'),
-    '#description' => t('When a value different than "Run now only" is set at "WHAT TIME DO YOU WANT TO RUN THE SCRIPT?" revisions are ' .
-                        'deleted on cron run. This option defines the maximum amount of revisions to delete per cron run.'),
+    '#description' => t('Deleting node revisions is a database intensive task. Increase this value if you think that the server can handle more deletions per cron run.'),
     '#options' => array_combine($options_cron, $options_cron),
     '#default_value' => variable_get('node_revision_delete_cron', NODE_REVISION_DELETE_CRON),
   );
@@ -281,8 +315,7 @@ EOL;
   $form['run_now'] = array(
     '#type' => 'checkbox',
     '#title' => t('Delete revisions now.'),
-    '#description' => t('This will delete revisions up to the amount defined above. Useful when there is a small ' .
-                        'amount of revisions to delete.'),
+    '#description' => t('This will start a batch job to delete old revisions for tracked content types.'),
     '#default_value' => 0,
   );
   $form['actions'] = array('#type' => 'actions');
@@ -301,8 +334,20 @@ function node_revision_delete_form_submit($form, &$form_state) {
   variable_set('node_revision_delete_cron', $form_state['values']['node_revision_delete_cron']);
   variable_set('node_revision_delete_time', $form_state['values']['node_revision_delete_time']);
   if ($form_state['values']['run_now'] == 1) {
-    $deleted = _node_revision_delete_do_delete();
-    drupal_set_message(t('Deleted @total revisions.', array('@total' => count($deleted))));
+    // Set up the batch job.
+    $operations = array();
+    foreach (node_revision_delete_content_types() as $content_type => $revisions_to_keep) {
+      $operations[] = array('node_revision_delete_batch_process', array($content_type, $revisions_to_keep));
+    }
+    $batch = array(
+      'operations' => $operations,
+      'title' => t('Node Revision Delete batch job'),
+      'init_message' => t('Starting...'),
+      'error_message' => t('An error occurred'),
+      'finished' => 'node_revision_delete_batch_finish',
+      'file' => drupal_get_path('module', 'node_revision_delete') . '/node_revision_delete.batch.inc',
+    );
+    batch_set($batch);
   }
   drupal_set_message(t('Settings Saved Successfully.'));
 }
@@ -324,30 +369,14 @@ function node_revision_delete_form_node_type_form_alter(&$form, &$form_state) {
   $form['workflow']['node_revision_delete_number'] = array(
     '#type' => 'textfield',
     '#title' => t('Maximum number of revisions to keep'),
-    '#description' => t('Oldest revisions will be deleted when the total amount surpases this value. ' .
-                        'Set it to 1 to remove all revisions.'),
+    '#description' => t('Oldest revisions will be deleted when the total amount surpases this value. Set it to 1 to remove all revisions.'),
     '#default_value' => $number,
     '#states' => array(
       // Hide the settings when the cancel notify checkbox is disabled.
       'visible' => array(
-       ':input[name="node_revision_delete_track"]' => array('checked' => TRUE),
+        ':input[name="node_revision_delete_track"]' => array('checked' => TRUE),
       ),
     ),
+    '#element_validate' => array('element_validate_integer_positive'),
   );
-  $form['#validate'][] = 'node_revision_delete_number_validate';
-}
-
-/**
- * Field validation callback for node_revision_delete_number.
- */
-function node_revision_delete_number_validate($form, &$form_state) {
-  $values = $form_state['values'];
-
-  // Make sure the number is a positive integer if we are tracking revisions.
-  if ($values['node_revision_delete_track'] == 1) {
-    $max_revisions = $values['node_revision_delete_number'];
-    if ((int) $max_revisions != $max_revisions || (int) $max_revisions <= 0) {
-      form_set_error('node_revision_delete_number', t('Maximum number of revisions must be a positive integer value.'));
-    }
-  }
 }
