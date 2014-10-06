@@ -1,6 +1,8 @@
 name = Phone
 description = The phone module allows administrators to define a field type for phone numbers.
 package = Fields
+dependencies[] = field
+files[] = phone.migrate.inc
 files[] = tests/phone.au.test
 files[] = tests/phone.be.test
 files[] = tests/phone.br.test
@@ -31,4 +33,10 @@ files[] = tests/phone.ua.test
 files[] = tests/phone.uk.test
 files[] = tests/phone.za.test
 core = 7.x
+
+; Information added by Drupal.org packaging script on 2014-01-14
+version = "7.x-1.0-beta1"
+core = "7.x"
+project = "phone"
+datestamp = "1389732224"
 
