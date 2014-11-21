@@ -1,3 +1,0 @@
-PATCHES
-June 3, 2013: Documents embedded in WYSIWYG get converted to HTML by the editor
-https://drupal.org/node/1942688#comment-7406828
