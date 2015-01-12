@@ -343,13 +343,8 @@ function ctools_get_plugins($module, $type, $id = NULL) {
  *   name and each inner array keyed on plugin type name.
  */
 function ctools_plugin_get_plugin_type_info($flush = FALSE) {
-  static $drupal_static_fast;
-  if (!isset($drupal_static_fast)) {
-    $drupal_static_fast['info_loaded'] = &drupal_static('ctools_plugin_type_info_loaded', FALSE);
-    $drupal_static_fast['all_type_info'] = &drupal_static('ctools_plugin_type_info', array());
-  }
-  $info_loaded = &$drupal_static_fast['info_loaded'];
-  $all_type_info = &$drupal_static_fast['all_type_info'];
+  $info_loaded = &drupal_static('ctools_plugin_type_info_loaded', FALSE);
+  $all_type_info = &drupal_static('ctools_plugin_type_info', array());
 
   // Only trigger info loading once.
   if ($info_loaded && !$flush) {
@@ -445,7 +440,7 @@ function ctools_plugin_load_includes($info, $filename = NULL) {
       $all_files[$info['module']][$info['type']] = array();
       // Load all our plugins.
       $directories = ctools_plugin_get_directories($info);
-      $extension = (empty($info['info file']) || ($info['extension'] != 'inc')) ? $info['extension'] : 'info';
+      $extension = empty($info['info file']) ? $info['extension'] : 'info';
 
       foreach ($directories as $module => $path) {
         $all_files[$info['module']][$info['type']][$module] = file_scan_directory($path, '/\.' . $extension . '$/', array('key' => 'name'));
