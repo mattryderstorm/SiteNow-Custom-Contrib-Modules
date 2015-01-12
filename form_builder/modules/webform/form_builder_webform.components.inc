@@ -765,6 +765,7 @@ function _form_builder_webform_form_builder_types_select() {
     'weight' => -5,
   );
   $fields['select']['default'] = _form_builder_webform_default('select', array('aslist' => TRUE, 'multiple' => FALSE));
+  unset($fields['select']['default']['#access']);
   $fields['select']['default']['#options'] = array('1' => t('one'), '2' => t('two'), '3' => t('three'));
   $fields['select']['default']['#default_value'] = 1;
   $fields['select']['default']['#title'] = t('New select');
@@ -779,6 +780,7 @@ function _form_builder_webform_form_builder_types_select() {
     'weight' => -6,
   );
   $fields['checkboxes']['default'] = _form_builder_webform_default('select', array('aslist' => FALSE, 'multiple' => TRUE));
+  unset($fields['checkboxes']['default']['#access']);
   $fields['checkboxes']['default']['#options'] = array('1' => t('one'), '2' => t('two'), '3' => t('three'));
   $fields['checkboxes']['default']['#default_value'] = array(1, 2);
   $fields['checkboxes']['default']['#title'] = t('New checkboxes');
@@ -792,6 +794,7 @@ function _form_builder_webform_form_builder_types_select() {
     'weight' => -7,
   );
   $fields['radios']['default'] = _form_builder_webform_default('select', array('aslist' => FALSE, 'multiple' => FALSE));
+  unset($fields['radios']['default']['#access']);
   $fields['radios']['default']['#options'] = array('1' => t('one'), '2' => t('two'), '3' => t('three'));
   $fields['radios']['default']['#default_value'] = 1;
   $fields['radios']['default']['#title'] = t('New radios');
