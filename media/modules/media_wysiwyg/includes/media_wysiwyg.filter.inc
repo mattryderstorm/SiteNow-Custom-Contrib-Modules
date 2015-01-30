@@ -197,16 +197,6 @@ function media_wysiwyg_token_to_markup($match, $wysiwyg = FALSE) {
     $element = array();
     $element['content'] = file_view($file, $tag_info['view_mode']);
     $element['content']['file'] = media_wysiwyg_get_file_without_label($file, $tag_info['view_mode'], $settings);
-    // Overwrite or set the file #alt attribute if it has been set in this
-    // instance.
-    if (!empty($element['content']['file']['#attributes']['alt'])) {
-      $element['content']['file']['#alt'] = $element['content']['file']['#attributes']['alt'];
-    }
-    // Overwrite or set the file #title attribute if it has been set in this
-    // instance.
-    if (!empty($element['content']['file']['#attributes']['title'])) {
-      $element['content']['file']['#title'] = $element['content']['file']['#attributes']['title'];
-    }
     if (count(element_children($element['content'])) > 1) {
       // Add surrounding divs to group them together.
       // We dont want divs when there are no additional fields to allow files
