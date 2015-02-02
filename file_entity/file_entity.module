@@ -38,8 +38,7 @@ require_once dirname(__FILE__) . '/file_entity.field.inc';
  */
 function file_entity_hook_info() {
   $hooks = array(
-    'file_operation_info',
-    'file_operation_info_alter',
+    'file_operations',
     'file_type_info',
     'file_type_info_alter',
     'file_formatter_info',
@@ -49,6 +48,8 @@ function file_entity_hook_info() {
     'file_displays_alter',
     'file_type',
     'file_type_alter',
+    'file_download_headers_alter',
+    'file_entity_access',
   );
 
   return array_fill_keys($hooks, array('group' => 'file'));
@@ -75,11 +76,22 @@ function file_entity_hook_info_alter(&$info) {
     'file_insert',
     'file_update',
     'file_delete',
-    // Miscellanious hooks
+    // Miscellaneous hooks
     'file_mimetype_mapping_alter',
     'file_url_alter',
   );
   $info += array_fill_keys($hooks, array('group' => 'file'));
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function file_entity_module_implements_alter(&$implementations, $hook) {
+  // nginx_accel_redirect_file_transfer() is an accidental hook implementation.
+  // @see https://www.drupal.org/node/2278625
+  if ($hook == 'file_transfer') {
+    unset($implementations['nginx_accel_redirect']);
+  }
 }
 
 /**
@@ -124,33 +136,38 @@ function file_entity_menu() {
     'description' => 'Manage settings for the type of files used on your site.',
   );
   $items['admin/structure/file-types/manage/%file_type/enable'] = array(
-    'title' => 'Enable file type',
+    'title' => 'Enable',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('file_entity_type_enable_confirm', 4),
     'access arguments' => array('administer file types'),
     'file' => 'file_entity.admin.inc',
+    'type' => MENU_CALLBACK,
   );
   $items['admin/structure/file-types/manage/%file_type/disable'] = array(
-    'title' => 'Disable file type',
+    'title' => 'Disable',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('file_entity_type_disable_confirm', 4),
     'access arguments' => array('administer file types'),
     'file' => 'file_entity.admin.inc',
+    'type' => MENU_CALLBACK,
   );
   $items['admin/structure/file-types/manage/%file_type/revert'] = array(
-    'title' => 'Revert a file type',
+    'title' => 'Revert',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('file_entity_type_revert_confirm', 4),
     'access arguments' => array('administer file types'),
     'file' => 'file_entity.admin.inc',
+    'type' => MENU_CALLBACK,
   );
   $items['admin/structure/file-types/manage/%file_type/delete'] = array(
-    'title' => 'Delete file type',
+    'title' => 'Delete',
     'page callback' => 'drupal_get_form',
     'page arguments' => array('file_entity_type_delete_confirm', 4),
     'access arguments' => array('administer file types'),
     'file' => 'file_entity.admin.inc',
+    'type' => MENU_CALLBACK,
   );
+
   $items['admin/content/file'] = array(
     'title' => 'Files',
     'description' => 'Manage files used on your site.',
@@ -164,6 +181,7 @@ function file_entity_menu() {
     'title' => 'List',
     'type' => MENU_DEFAULT_LOCAL_TASK,
   );
+
   // general view, edit, delete for files
   $items['file/add'] = array(
     'title' => 'Add file',
@@ -180,6 +198,20 @@ function file_entity_menu() {
     'title' => 'Upload',
     'type' => MENU_DEFAULT_LOCAL_TASK,
     'weight' => -10,
+  );
+  $items['file/add/upload/file'] = array(
+    'title' => 'File',
+    'type' => MENU_DEFAULT_LOCAL_TASK,
+    'weight' => -10,
+  );
+  $items['file/add/upload/archive'] = array(
+    'title' => 'Archive',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('file_entity_upload_archive_form'),
+    'access arguments' => array('administer files'),
+    'file' => 'file_entity.pages.inc',
+    'type' => MENU_LOCAL_TASK,
+    'weight' => -5,
   );
   $items['file/%file'] = array(
     'title callback' => 'entity_label',
@@ -304,6 +336,15 @@ function file_entity_menu() {
     }
   }
 
+  $items['admin/config/media/file-settings'] = array(
+    'title' => 'File settings',
+    'description' => 'Configure allowed file extensions, default alt and title sources, and the file upload wizard.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('file_entity_settings_form'),
+    'access arguments' => array('administer site configuration'),
+    'file' => 'file_entity.admin.inc',
+  );
+
   // Optional devel module integration
   if (module_exists('devel')) {
     $items['file/%file/devel'] = array(
@@ -398,43 +439,45 @@ function file_entity_permission() {
     'view files' => array(
       'title' => t('View files'),
     ),
-    'edit own files' => array(
-      'title' => t('Edit own files'),
-    ),
-    'edit any files' => array(
-      'title' => t('Edit any files'),
-    ),
-    'delete own files' => array(
-      'title' => t('Delete own files'),
-    ),
-    'delete any files' => array(
-      'title' => t('Delete any files'),
-    ),
-    'download own files' => array(
-      'title' => t('Download own files'),
-    ),
-    'download any files' => array(
-      'title' => t('Download any files'),
-    ),
   );
 
   // Add description for the 'View file details' and 'View own private file
   // details' permissions to show which stream wrappers they apply to.
-  $wrappers = array();
-  foreach (file_get_stream_wrappers(STREAM_WRAPPERS_VISIBLE) as $key => $wrapper) {
-    if (empty($wrapper['private'])) {
-      $wrappers['public'][$key] = $wrapper['name'];
-    }
-    else {
-      $wrappers['private'][$key] = $wrapper['name'];
-    }
-  }
+  $wrappers = file_entity_get_public_and_private_stream_wrapper_names();
   $wrappers += array('public' => array(t('None')), 'private' => array(t('None')));
 
   $permissions['view files']['description'] = t('Includes the following stream wrappers: %wrappers.', array('%wrappers' => implode(', ', $wrappers['public'])));
   $permissions['view own private files']['description'] = t('Includes the following stream wrappers: %wrappers.', array('%wrappers' => implode(', ', $wrappers['private'])));
 
+  // Generate standard file permissions for all applicable file types.
+  foreach (file_entity_permissions_get_configured_types() as $type) {
+    $permissions += file_entity_list_permissions($type);
+  }
+
   return $permissions;
+}
+
+/*
+ * Implements hook_cron_queue_info().
+ */
+function file_entity_cron_queue_info() {
+  $queues['file_entity_type_determine'] = array(
+    'worker callback' => 'file_entity_type_determine',
+  );
+  return $queues;
+}
+
+/*
+ * Determines file type for a given file ID and saves the file.
+ *
+ * @param $fid
+ *   A file ID.
+ */
+function file_entity_type_determine($fid) {
+  if ($file = file_load($fid)) {
+    // The file type will be automatically determined when saving the file.
+    file_save($file);
+  }
 }
 
 /**
@@ -533,34 +576,6 @@ function file_entity_search_execute($keys = NULL, $conditions = NULL) {
   $query->join('file_managed', 'fm', 'fm.fid = i.sid');
   $query->searchExpression($keys, 'file');
 
-  if (user_access('bypass file access')) {
-    // Administrators don't need to be restricted to only permanent files.
-    $query->condition('fm.status', FILE_STATUS_PERMANENT);
-  }
-  elseif (user_access('view files')) {
-    // For non-private files, users can view if they have the 'view files'
-    // permission.
-    $query->condition('fm.status', FILE_STATUS_PERMANENT);
-  }
-  elseif (user_access('view private files') && user_is_logged_in()) {
-    // For private files, users can view private files if the
-    // user is not anonymous, and has the 'view private files' permission.
-    $query->condition('fm.uri', db_like('private://') . '%', 'LIKE');
-    $query->condition('fm.status', FILE_STATUS_PERMANENT);
-  }
-  elseif (user_access('view own files')) {
-    // For non-private files, allow to see if user owns the file.
-    $query->condition('fm.uid', $user->uid, '=');
-    $query->condition('fm.status', FILE_STATUS_PERMANENT);
-  }
-  elseif (user_access('view own private files') && user_is_logged_in()) {
-    // For private files, users can view their own private files if the
-    // user is not anonymous, and has the 'view own private files' permission.
-    $query->condition('fm.uri', db_like('private://') . '%', 'LIKE');
-    $query->condition('fm.uid', $user->uid, '=');
-    $query->condition('fm.status', FILE_STATUS_PERMANENT);
-  }
-
   // Insert special keywords.
   $query->setOption('type', 'fm.type');
   if ($query->setOption('term', 'ti.tid')) {
@@ -577,6 +592,7 @@ function file_entity_search_execute($keys = NULL, $conditions = NULL) {
   // Load results.
   $find = $query
     ->limit(10)
+    ->addTag('file_access')
     ->execute();
   $results = array();
   foreach ($find as $item) {
@@ -813,6 +829,19 @@ function file_entity_admin_paths() {
 }
 
 /**
+ * Implements hook_action_info_alter().
+ */
+function file_entity_action_info_alter(&$actions) {
+  if (module_exists('pathauto')) {
+    $actions['pathauto_file_update_action'] = array(
+      'type' => 'file',
+      'label' => t('Update file alias'),
+      'configurable' => FALSE,
+    );
+  }
+}
+
+/**
  * Implements hook_theme().
  */
 function file_entity_theme() {
@@ -834,6 +863,31 @@ function file_entity_theme() {
     ),
     'file_entity_file_link' => array(
       'variables' => array('file' => NULL, 'icon_directory' => NULL),
+      'file' => 'file_entity.theme.inc',
+    ),
+    'file_entity_download_link' => array(
+      'variables' => array('file' => NULL, 'icon_directory' => NULL, 'text' => NULL),
+      'file' => 'file_entity.theme.inc',
+    ),
+    'file_entity_file_audio' => array(
+      'variables' => array(
+        'files' => array(),
+        'controls' => TRUE,
+        'autoplay' => FALSE,
+        'loop' => FALSE,
+      ),
+      'file' => 'file_entity.theme.inc',
+    ),
+    'file_entity_file_video' => array(
+      'variables' => array(
+        'files' => array(),
+        'controls' => TRUE,
+        'autoplay' => FALSE,
+        'loop' => FALSE,
+        'muted' => FALSE,
+        'width' => NULL,
+        'height' => NULL,
+      ),
       'file' => 'file_entity.theme.inc',
     ),
   );
@@ -866,6 +920,10 @@ function file_entity_entity_info_alter(&$entity_info) {
     'label' => t('Preview'),
     'custom settings' => TRUE,
   );
+  $entity_info['file']['view modes']['rss'] = array(
+    'label' => t('RSS'),
+    'custom settings' => FALSE,
+  );
 
   // Search integration is provided by file_entity.module, so search-related
   // view modes for files are defined here and not in search.module.
@@ -896,7 +954,7 @@ function file_entity_entity_info_alter(&$entity_info) {
 
   // Ensure some of the Entity API callbacks are supported.
   $entity_info['file']['creation callback'] = 'entity_metadata_create_object';
-  $entity_info['file']['view callback'] = 'file_view_multiple';
+  $entity_info['file']['view callback'] = 'file_entity_metadata_view_file';
   $entity_info['file']['edit callback'] = 'file_entity_metadata_form_file';
   $entity_info['file']['access callback'] = 'file_entity_access';
 
@@ -966,6 +1024,15 @@ function file_entity_uri($file) {
 }
 
 /**
+ * Entity API callback to view files.
+ */
+function file_entity_metadata_view_file($entities, $view_mode = 'full', $langcode = NULL) {
+  $result = file_view_multiple($entities, $view_mode, 0, $langcode);
+  // Make sure to key the result with 'file' instead of 'files'.
+  return array('file' => reset($result));
+}
+
+/**
  * Entity API callback to get the form of a file entity.
  */
 function file_entity_metadata_form_file($file) {
@@ -973,6 +1040,16 @@ function file_entity_metadata_form_file($file) {
   $form_state['build_info']['args'] = array($file);
   form_load_include($form_state, 'inc', 'file_entity', 'file_entity.pages');
   return drupal_build_form('file_entity_edit', $form_state);
+}
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+
+function file_entity_ctools_plugin_directory($module, $type) {
+  if ($module == 'ctools' && $type == 'content_types') {
+    return 'plugins/' . $type;
+  }
 }
 
 /**
@@ -1015,23 +1092,22 @@ function file_entity_file_formatter_info() {
 
   // Allow file field formatters to be reused for displaying the file entity's
   // file pseudo-field.
-  foreach (field_info_formatter_types() as $field_formatter_type => $field_formatter_info) {
-    $is_file_formatter = in_array('file', $field_formatter_info['field types']);
-    $is_image_formatter = in_array('image', $field_formatter_info['field types']);
-
-    if ($is_file_formatter || $is_image_formatter) {
-      $formatters['file_field_' . $field_formatter_type] = array(
-        'label' => $field_formatter_info['label'],
+  foreach (field_info_formatter_types() as $key => $formatter) {
+    if (array_intersect($formatter['field types'], array('file', 'image'))) {
+      $key = 'file_field_' . $key;
+      $formatters[$key] = array(
+        'label' => $formatter['label'],
+        'description' => !empty($formatter['description']) ? $formatter['description'] : '',
         'view callback' => 'file_entity_file_formatter_file_field_view',
       );
-      if (!$is_file_formatter) {
-        $formatters['file_field_' . $field_formatter_type]['file types'] = array('image');
-      }
-      if (!empty($field_formatter_info['settings'])) {
-        $formatters['file_field_' . $field_formatter_type] += array(
-          'default settings' => $field_formatter_info['settings'],
+      if (!empty($formatter['settings'])) {
+        $formatters[$key] += array(
+          'default settings' => $formatter['settings'],
           'settings callback' => 'file_entity_file_formatter_file_field_settings',
         );
+      }
+      if (!empty($formatter['file formatter'])) {
+        $formatters[$key] += $formatter['file formatter'];
       }
     }
   }
@@ -1042,21 +1118,14 @@ function file_entity_file_formatter_info() {
       'label' => t('Image'),
       'default settings' => array(
         'image_style' => '',
-        'alt' => '',
-        'title' => ''
+        'alt' => '[file:field_file_image_alt_text]',
+        'title' => '[file:field_file_image_title_text]'
       ),
       'view callback' => 'file_entity_file_formatter_file_image_view',
       'settings callback' => 'file_entity_file_formatter_file_image_settings',
+      'hidden' => TRUE,
+      'mime types' => array('image/*'),
     );
-    // Provide default token values.
-    if (module_exists('token')) {
-      $formatters['file_image']['default settings']['alt'] = '[file:field_file_image_alt_text]';
-      $formatters['file_image']['default settings']['title'] = '[file:field_file_image_title_text]';
-    }
-    elseif (module_exists('entity_token')) {
-      $formatters['file_image']['default settings']['alt'] = '[file:field-file-image-alt-text]';
-      $formatters['file_image']['default settings']['title'] = '[file:field-file-image-title-text]';
-    }
   }
 
   return $formatters;
@@ -1077,9 +1146,16 @@ function file_entity_file_formatter_file_field_view($file, $display, $langcode) 
       // Set $display['type'] to what hook_field_formatter_*() expects.
       $display['type'] = $field_formatter_type;
 
+      // Allow any attribute overrides (e.g. from the Media module) to be
+      // respected.
+      $item = (array) $file;
+      if (!empty($file->override['attributes'])) {
+        $item = array_merge($item, $file->override['attributes']);
+      }
+
       // Set $items to what file field formatters expect. See file_field_load(),
       // and note that, here, $file is already a fully loaded entity.
-      $items = array((array) $file);
+      $items = array($item);
 
       // Invoke hook_field_formatter_prepare_view() and
       // hook_field_formatter_view(). Note that we are reusing field formatter
@@ -1126,9 +1202,15 @@ function file_entity_file_formatter_file_field_settings($form, &$form_state, $se
     // transfered via the $instance parameter, so we must mock it.
     if (isset($field_formatter_info['module']) && ($function = ($field_formatter_info['module'] . '_field_formatter_settings_form')) && function_exists($function)) {
       $field = NULL;
-      $mock_instance['display'][$view_mode] = array(
-        'type' => $field_formatter_type,
-        'settings' => $settings,
+      $mock_instance = array(
+        'display' => array(
+          $view_mode => array(
+            'type' => $field_formatter_type,
+            'settings' => $settings,
+          ),
+        ),
+        'entity_type' => 'file',
+        'bundle' => $file_type,
       );
       return $function($field, $mock_instance, $view_mode, $form, $form_state);
     }
@@ -1152,25 +1234,29 @@ function file_entity_file_formatter_file_image_view($file, $display, $langcode) 
   }
 
   // Do not bother proceeding if this file does not have an image mime type.
-  if (strpos($file->filemime, 'image/') !== 0) {
+  if (file_entity_file_get_mimetype_type($file) != 'image') {
     return;
   }
 
-  if (file_entity_file_is_readable($file) && isset($file->image_dimensions)) {
+  if (file_entity_file_is_readable($file)) {
     // We don't sanitize here.
     // @see http://drupal.org/node/1553094#comment-6257382
     // Theme function will take care of escaping.
+    if (!isset($file->metadata)) {
+      $file->metadata = array();
+    }
+    $file->metadata += array('width' => NULL, 'height' => NULL);
     $replace_options = array(
-      'clear' => 1,
-      'sanitize' => 0,
+      'clear' => TRUE,
+      'sanitize' => FALSE,
     );
     if (!empty($display['settings']['image_style'])) {
       $element = array(
         '#theme' => 'image_style',
         '#style_name' => $display['settings']['image_style'],
         '#path' => $file->uri,
-        '#width' => isset($file->override['attributes']['width']) ? $file->override['attributes']['width'] : $file->image_dimensions['width'],
-        '#height' => isset($file->override['attributes']['height']) ? $file->override['attributes']['height'] : $file->image_dimensions['height'],
+        '#width' => isset($file->override['attributes']['width']) ? $file->override['attributes']['width'] : $file->metadata['width'],
+        '#height' => isset($file->override['attributes']['height']) ? $file->override['attributes']['height'] : $file->metadata['height'],
         '#alt' => token_replace($display['settings']['alt'], array('file' => $file), $replace_options),
         '#title' => token_replace($display['settings']['title'], array('file' => $file), $replace_options),
       );
@@ -1179,8 +1265,8 @@ function file_entity_file_formatter_file_image_view($file, $display, $langcode) 
       $element = array(
         '#theme' => 'image',
         '#path' => $file->uri,
-        '#width' => isset($file->override['attributes']['width']) ? $file->override['attributes']['width'] : $file->image_dimensions['width'],
-        '#height' => isset($file->override['attributes']['height']) ? $file->override['attributes']['height'] : $file->image_dimensions['height'],
+        '#width' => isset($file->override['attributes']['width']) ? $file->override['attributes']['width'] : $file->metadata['width'],
+        '#height' => isset($file->override['attributes']['height']) ? $file->override['attributes']['height'] : $file->metadata['height'],
         '#alt' => token_replace($display['settings']['alt'], array('file' => $file), $replace_options),
         '#title' => token_replace($display['settings']['title'], array('file' => $file), $replace_options),
       );
@@ -1304,8 +1390,7 @@ function file_entity_views_api() {
  *   A file object.
  */
 function file_entity_is_page($file) {
-  $page_file = menu_get_object('file', 1);
-  return (!empty($page_file) ? $page_file->fid == $file->fid : FALSE);
+  return (arg(0) == 'file' && arg(1) == ($file->fid));
 }
 
 /**
@@ -1327,10 +1412,8 @@ function template_preprocess_file_entity(&$variables) {
   $account = user_load($file->uid);
   $variables['name']      = theme('username', array('account' => $account));
 
-  // @todo Use entity_uri once http://drupal.org/node/1057242 is fixed.
-  //$uri = entity_uri('file', $file);
-  //$variables['file_url']  = url($uri['path'], $uri['options']);
-  $variables['file_url'] = file_create_url($file->uri);
+  $uri = entity_uri('file', $file);
+  $variables['file_url']  = url($uri['path'], $uri['options']);
   $label = entity_label('file', $file);
   $variables['label']     = check_plain($label);
   $variables['page']      = $view_mode == 'full' && file_entity_is_page($file);
@@ -1416,6 +1499,7 @@ function file_entity_type_get_names() {
   $names = &drupal_static(__FUNCTION__);
 
   if (!isset($names)) {
+    $names = array();
     $info = entity_get_info('file');
     foreach ($info['bundles'] as $bundle => $bundle_info) {
       $names[$bundle] = $bundle_info['label'];
@@ -1492,6 +1576,9 @@ function file_entity_ctools_plugin_api($owner, $api) {
   if ($owner == 'file_entity' && $api == 'file_type') {
     return array('version' => 1);
   }
+  if ($owner == 'file_entity' && $api == 'file_default_displays') {
+    return array('version' => 1);
+  }
 }
 
 /**
@@ -1528,8 +1615,6 @@ function file_entity_ctools_plugin_api($owner, $api) {
  *
  * Stream wrappers that are considered private should implement a 'private'
  * flag equal to TRUE in hook_stream_wrappers().
- *
- * @todo Unify core's hook_file_download() as a 'download' op of file_entity_access().
  */
 
 /**
@@ -1566,10 +1651,6 @@ function file_entity_access($op, $file = NULL, $account = NULL) {
     $account = $GLOBALS['user'];
   }
 
-  if (!$file && $op == 'create') {
-    return user_access('create files', $account) || user_access('bypass file access', $account);
-  }
-
   // $file may be either an object or a file type. Since file types cannot be
   // an integer, use either fid or type as the static cache id.
   $cache_id = is_object($file) ? $file->fid : $file;
@@ -1603,8 +1684,8 @@ function file_entity_access($op, $file = NULL, $account = NULL) {
 
     if (!empty($wrapper['private'])) {
       // For private files, users can view private files if the
-      // user is not anonymous, and has the 'view private files' permission.
-      if (!empty($account->uid) && user_access('view private files', $account)) {
+      // user has the 'view private files' permission.
+      if (user_access('view private files', $account)) {
         return $rights[$account->uid][$cache_id][$op] = TRUE;
       }
 
@@ -1632,8 +1713,6 @@ function file_entity_access($op, $file = NULL, $account = NULL) {
  * Implements hook_file_entity_access().
  */
 function file_entity_file_entity_access($op, $file, $account) {
-  $grants = array();
-
   // If the file URI is invalid, deny access.
   if (is_object($file) && !file_valid_uri($file->uri)) {
     return FILE_ENTITY_ACCESS_DENY;
@@ -1645,41 +1724,310 @@ function file_entity_file_entity_access($op, $file, $account) {
     }
   }
 
-  if ($op == 'download') {
-    if (user_access('download any files', $account) || (is_object($file) && user_access('download own files', $account) && ($account->uid == $file->uid))) {
-      return FILE_ENTITY_ACCESS_ALLOW;
-    }
-  }
+  if (!empty($file)) {
+    $type = is_string($file) ? $file : $file->type;
 
-  if ($op == 'update') {
-    if (user_access('edit any files', $account) || (is_object($file) && user_access('edit own files', $account) && ($account->uid == $file->uid))) {
-      return FILE_ENTITY_ACCESS_ALLOW;
-    }
-  }
-
-  if ($op == 'delete') {
-    if (user_access('delete any files', $account) || (is_object($file) && user_access('delete own files', $account) && ($account->uid == $file->uid))) {
-      return FILE_ENTITY_ACCESS_ALLOW;
-    }
-  }
-
-  if ($op == 'view' && is_object($file) && file_uri_scheme($file->uri) == 'private') {
-    // When viewing private files, we can only invoke hook_file_download()
-    // if the $account user objet matches the current user.
-    if ($GLOBALS['user']->uid == $account->uid) {
-      foreach (module_implements('file_download') as $module) {
-        $access = module_invoke($module, 'file_download', $file->uri);
-        if ($access === -1) {
-          return FILE_ENTITY_ACCESS_DENY;
+    if (in_array($type, file_entity_permissions_get_configured_types())) {
+      if ($op == 'download') {
+        if (user_access('download any ' . $type . ' files', $account) || is_object($file) && user_access('download own ' . $type . ' files', $account) && ($account->uid == $file->uid)) {
+          return FILE_ENTITY_ACCESS_ALLOW;
         }
-        elseif (!empty($access)) {
-          $grants[] = $access;
+      }
+
+      if ($op == 'update') {
+        if (user_access('edit any ' . $type . ' files', $account) || (is_object($file) && user_access('edit own ' . $type . ' files', $account) && ($account->uid == $file->uid))) {
+          return FILE_ENTITY_ACCESS_ALLOW;
+        }
+      }
+
+      if ($op == 'delete') {
+        if (user_access('delete any ' . $type . ' files', $account) || (is_object($file) && user_access('delete own ' . $type . ' files', $account) && ($account->uid == $file->uid))) {
+          return FILE_ENTITY_ACCESS_ALLOW;
         }
       }
     }
   }
 
-  return !empty($grants) ? FILE_ENTITY_ACCESS_ALLOW : FILE_ENTITY_ACCESS_IGNORE;
+  return FILE_ENTITY_ACCESS_IGNORE;
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ *
+ * This is the hook_query_alter() for queries tagged with 'file_access'. It adds
+ * file access checks for the user account given by the 'account' meta-data (or
+ * global $user if not provided).
+ */
+function file_entity_query_file_access_alter(QueryAlterableInterface $query) {
+  _file_entity_query_file_entity_access_alter($query, 'file');
+}
+
+/**
+ * Implements hook_query_TAG_alter().
+ *
+ * This function implements the same functionality as
+ * file_entity_query_file_access_alter() for the SQL field storage engine. File
+ * access conditions are added for field values belonging to files only.
+ */
+function file_entity_query_entity_field_access_alter(QueryAlterableInterface $query) {
+  //_file_entity_query_file_entity_access_alter($query, 'entity');
+}
+
+/**
+ * Helper for file entity access functions.
+ *
+ * @param $query
+ *   The query to add conditions to.
+ * @param $type
+ *   Either 'file' or 'entity' depending on what sort of query it is. See
+ *   file_entity_query_file_entity_access_alter() and
+ *   file_entity_query_entity_field_access_alter() for more.
+ */
+function _file_entity_query_file_entity_access_alter($query, $type) {
+  global $user;
+
+  // Read meta-data from query, if provided.
+  if (!$account = $query->getMetaData('account')) {
+    $account = $user;
+  }
+
+  // If $account can bypass file access, we don't need to alter the query.
+  if (user_access('bypass file access', $account)) {
+    return;
+  }
+
+  $tables = $query->getTables();
+  $base_table = $query->getMetaData('base_table');
+  // If no base table is specified explicitly, search for one.
+  if (!$base_table) {
+    $fallback = '';
+    foreach ($tables as $alias => $table_info) {
+      if (!($table_info instanceof SelectQueryInterface)) {
+        $table = $table_info['table'];
+        // If the file_managed table is in the query, it wins immediately.
+        if ($table == 'file_managed') {
+          $base_table = $table;
+          break;
+        }
+        // Check whether the table has a foreign key to file_managed.fid. If it
+        // does, do not run this check again as we found a base table and only
+        // file_managed can triumph that.
+        if (!$base_table) {
+          // The schema is cached.
+          $schema = drupal_get_schema($table);
+          if (isset($schema['fields']['fid'])) {
+            if (isset($schema['foreign keys'])) {
+              foreach ($schema['foreign keys'] as $relation) {
+                if ($relation['table'] === 'file_managed' && $relation['columns'] === array('fid' => 'fid')) {
+                  $base_table = $table;
+                }
+              }
+            }
+            else {
+              // At least it's a fid. A table with a field called fid is very
+              // very likely to be a file_managed.fid in a file access query.
+              $fallback = $table;
+            }
+          }
+        }
+      }
+    }
+    // If there is nothing else, use the fallback.
+    if (!$base_table) {
+      if ($fallback) {
+        watchdog('security', 'Your file listing query is using @fallback as a base table in a query tagged for file access. This might not be secure and might not even work. Specify foreign keys in your schema to file_managed.fid ', array('@fallback' => $fallback), WATCHDOG_WARNING);
+        $base_table = $fallback;
+      }
+      else {
+        throw new Exception(t('Query tagged for file access but there is no fid. Add foreign keys to file_managed.fid in schema to fix.'));
+      }
+    }
+  }
+
+  if ($type == 'entity') {
+    // The original query looked something like:
+    // @code
+    //  SELECT fid FROM sometable s
+    //  WHERE ($file_access_conditions)
+    // @endcode
+    //
+    // Our query will look like:
+    // @code
+    //  SELECT entity_type, entity_id
+    //  FROM field_data_something s
+    //  WHERE (entity_type = 'file' AND $file_access_conditions) OR (entity_type <> 'file')
+    // @endcode
+    //
+    // So instead of directly adding to the query object, we need to collect
+    // all of the file access conditions in a separate db_and() object and
+    // then add it to the query at the end.
+    $file_conditions = db_and();
+  }
+  foreach ($tables as $falias => $tableinfo) {
+    $table = $tableinfo['table'];
+    if (!($table instanceof SelectQueryInterface) && $table == $base_table) {
+      $subquery = db_select('file_managed', 'fm_access')->fields('fm_access', array('fid'));
+      $subquery_conditions = db_or();
+
+      $wrappers = file_entity_get_public_and_private_stream_wrapper_names();
+      if (!empty($wrappers['public'])) {
+        if (user_access('view files', $account)) {
+          foreach (array_keys($wrappers['public']) as $wrapper) {
+            $subquery_conditions->condition('fm_access.uri', $wrapper . '%', 'LIKE');
+          }
+        }
+        elseif (user_access('view own files', $account)) {
+          foreach (array_keys($wrappers['public']) as $wrapper) {
+            $subquery_conditions->condition(db_and()
+              ->condition('fm_access.uri', $wrapper . '%', 'LIKE')
+              ->condition('fm_access.uid', $account->uid)
+            );
+          }
+        }
+      }
+      if (!empty($wrappers['private'])) {
+        if (user_access('view private files', $account)) {
+          foreach (array_keys($wrappers['private']) as $wrapper) {
+            $subquery_conditions->condition('fm_access.uri', $wrapper . '%', 'LIKE');
+          }
+        }
+        elseif (user_access('view own private files', $account)) {
+          foreach (array_keys($wrappers['private']) as $wrapper) {
+            $subquery_conditions->condition(db_and()
+              ->condition('fm_access.uri', $wrapper . '%', 'LIKE')
+              ->condition('fm_access.uid', $account->uid)
+            );
+          }
+        }
+      }
+
+      if ($subquery_conditions->count()) {
+        $subquery->condition($subquery_conditions);
+
+        $field = 'fid';
+        // Now handle entities.
+        if ($type == 'entity') {
+          // Set a common alias for entities.
+          $base_alias = $falias;
+          $field = 'entity_id';
+        }
+        $subquery->where("$falias.$field = fm_access.fid");
+
+        // For an entity query, attach the subquery to entity conditions.
+        if ($type == 'entity') {
+          $file_conditions->exists($subquery);
+        }
+        // Otherwise attach it to the node query itself.
+        elseif ($table == 'file_managed') {
+          // Fix for https://drupal.org/node/2073085
+          $db_or = db_or();
+          $db_or->exists($subquery);
+          $db_or->isNull($falias . '.' . $field);
+          $query->condition($db_or);
+        }
+        else {
+          $query->exists($subquery);
+        }
+      }
+    }
+  }
+
+  if ($type == 'entity' && $file_conditions->count()) {
+    // All the file access conditions are only for field values belonging to
+    // files.
+    $file_conditions->condition("$base_alias.entity_type", 'file');
+    $or = db_or();
+    $or->condition($file_conditions);
+    // If the field value belongs to a non-file entity type then this function
+    // does not do anything with it.
+    $or->condition("$base_alias.entity_type", 'file', '<>');
+    // Add the compiled set of rules to the query.
+    $query->condition($or);
+  }
+}
+
+/**
+ * Implements hook_file_download().
+ */
+function file_entity_file_download($uri) {
+  // Load the file from the URI.
+  $file = file_uri_to_object($uri);
+
+  // An existing file wasn't found, so we don't control access.
+  // E.g. image derivatives will fall here.
+  if (empty($file->fid)) {
+    return NULL;
+  }
+
+  // Allow the user to download the file if they have appropriate permissions.
+  if (file_entity_access('view', $file)) {
+    return file_get_content_headers($file);
+  }
+
+  return NULL;
+}
+
+/**
+ * Helper function to generate standard file permission list for a given type.
+ *
+ * @param $type
+ *   The machine-readable name of the file type.
+ * @return array
+ *   An array of permission names and descriptions.
+ */
+function file_entity_list_permissions($type) {
+  $info = file_type_load($type);
+
+  // Build standard list of file permissions for this type.
+  $permissions = array(
+    "edit own $type files" => array(
+      'title' => t('%type_name: Edit own files', array('%type_name' => $info->label)),
+    ),
+    "edit any $type files" => array(
+      'title' => t('%type_name: Edit any files', array('%type_name' => $info->label)),
+    ),
+    "delete own $type files" => array(
+      'title' => t('%type_name: Delete own files', array('%type_name' => $info->label)),
+    ),
+    "delete any $type files" => array(
+      'title' => t('%type_name: Delete any files', array('%type_name' => $info->label)),
+    ),
+    "download own $type files" => array(
+      'title' => t('%type_name: Download own files', array('%type_name' => $info->label)),
+    ),
+    "download any $type files" => array(
+      'title' => t('%type_name: Download any files', array('%type_name' => $info->label)),
+    ),
+  );
+
+  return $permissions;
+}
+
+/**
+ * Returns an array of file types that should be managed by permissions.
+ *
+ * By default, this will include all file types in the system. To exclude a
+ * specific file from getting permissions defined for it, set the
+ * file_entity_permissions_$type variable to 0. File entity does not provide an
+ * interface for doing so, however, contrib modules may exclude their own files
+ * in hook_install(). Alternatively, contrib modules may configure all file
+ * types at once, or decide to apply some other hook_file_entity_access()
+ * implementation to some or all file types.
+ *
+ * @return
+ *   An array of file types managed by this module.
+ */
+function file_entity_permissions_get_configured_types() {
+
+  $configured_types = array();
+
+  foreach (file_type_get_enabled_types() as $type => $info) {
+    if (variable_get('file_entity_permissions_' . $type, 1)) {
+      $configured_types[] = $type;
+    }
+  }
+
+  return $configured_types;
 }
 
 /**
@@ -1697,12 +2045,7 @@ function file_entity_file_default_types() {
     'label' => t('Image'),
     'description' => t('An <em>Image</em> file is a still visual.'),
     'mimetypes' => array(
-      'image/jpeg',
-      'image/gif',
-      'image/png',
-    ),
-    'streams' => array(
-      'public',
+      'image/*',
     ),
   );
 
@@ -1713,14 +2056,7 @@ function file_entity_file_default_types() {
     'label' => t('Video'),
     'description' => t('A <em>Video</em> file is a moving visual recording.'),
     'mimetypes' => array(
-      'video/quicktime',
-      'video/mp4',
-      'video/x-msvideo',
-      'video/ogg',
-      'video/x-flv',
-    ),
-    'streams' => array(
-      'public',
+      'video/*',
     ),
   );
 
@@ -1731,13 +2067,7 @@ function file_entity_file_default_types() {
     'label' => t('Audio'),
     'description' => t('An <em>Audio</em> file is a sound recording.'),
     'mimetypes' => array(
-      'audio/mpeg',
-      'audio/x-ms-wma',
-      'audio/x-wav',
-      'audio/ogg',
-    ),
-    'streams' => array(
-      'public',
+      'audio/*',
     ),
   );
 
@@ -1759,9 +2089,6 @@ function file_entity_file_default_types() {
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    ),
-    'streams' => array(
-      'public',
     ),
   );
 
@@ -1872,6 +2199,118 @@ function file_entity_upload_validators_pre_render($element) {
 }
 
 /**
+ * @name pathauto_file Pathauto integration for the core file module.
+ * @{
+ */
+
+/**
+ * Implements hook_file_insert() on behalf of pathauto.module.
+ */
+function pathauto_file_insert($file) {
+  pathauto_file_update_alias($file, 'insert');
+}
+
+/**
+ * Implements hook_file_update() on behalf of pathauto.module.
+ */
+function pathauto_file_update($file) {
+  pathauto_file_update_alias($file, 'update');
+}
+
+/**
+ * Implements hook_file_delete() on behalf of pathauto.module.
+ */
+function pathauto_file_delete($file) {
+  pathauto_entity_path_delete_all('file', $file, "file/{$file->fid}");
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter() on behalf of pathauto.module.
+ *
+ * Add the Pathauto settings to the file form.
+ */
+function pathauto_form_file_entity_edit_alter(&$form, &$form_state, $form_id) {
+  $file = $form_state['file'];
+  $langcode = pathauto_entity_language('file', $file);
+  pathauto_field_attach_form('file', $file, $form, $form_state, $langcode);
+}
+
+/**
+ * Implements hook_file_operations() on behalf of pathauto.module.
+ */
+function pathauto_file_operations() {
+  $operations['pathauto_update_alias'] = array(
+    'label' => t('Update URL alias'),
+    'callback' => 'pathauto_file_update_alias_multiple',
+    'callback arguments' => array('bulkupdate', array('message' => TRUE)),
+  );
+  return $operations;
+}
+
+/**
+ * Update the URL aliases for an individual file.
+ *
+ * @param $file
+ *   A file object.
+ * @param $op
+ *   Operation being performed on the file ('insert', 'update' or 'bulkupdate').
+ * @param $options
+ *   An optional array of additional options.
+ */
+function pathauto_file_update_alias(stdClass $file, $op, array $options = array()) {
+  // Skip processing if the user has disabled pathauto for the file.
+  if (isset($file->path['pathauto']) && empty($file->path['pathauto']) && empty($options['force'])) {
+    return;
+  }
+
+  $options += array('language' => pathauto_entity_language('file', $file));
+
+  // Skip processing if the file has no pattern.
+  if (!pathauto_pattern_load_by_entity('file', $file->type, $options['language'])) {
+    return;
+  }
+
+  module_load_include('inc', 'pathauto');
+  $uri = entity_uri('file', $file);
+  pathauto_create_alias('file', $op, $uri['path'], array('file' => $file), $file->type, $options['language']);
+}
+
+/**
+ * Update the URL aliases for multiple files.
+ *
+ * @param $fids
+ *   An array of file IDs.
+ * @param $op
+ *   Operation being performed on the files ('insert', 'update' or
+ *   'bulkupdate').
+ * @param $options
+ *   An optional array of additional options.
+ */
+function pathauto_file_update_alias_multiple(array $fids, $op, array $options = array()) {
+  $options += array('message' => FALSE);
+
+  $files = file_load_multiple($fids);
+  foreach ($files as $file) {
+    pathauto_file_update_alias($file, $op, $options);
+  }
+
+  if (!empty($options['message'])) {
+    drupal_set_message(format_plural(count($fids), 'Updated URL alias for 1 file.', 'Updated URL aliases for @count files.'));
+  }
+}
+
+/**
+ * Update action wrapper for pathauto_file_update_alias().
+ */
+function pathauto_file_update_action($file, $context = array()) {
+  pathauto_file_update_alias($file, 'bulkupdate', array('message' => TRUE));
+}
+
+/**
+ * @} End of "name pathauto_file".
+ */
+
+/**
  * Implements hook_form_FORM_ID_alter() for file_entity_edit() on behalf of path.module.
  */
 function path_form_file_entity_edit_alter(&$form, $form_state) {
@@ -1931,7 +2370,7 @@ function path_file_insert($file) {
     // Only save a non-empty alias.
     if (!empty($path['alias'])) {
       // Ensure fields for programmatic executions.
-      $path['source'] = 'file/' . $file->tid;
+      $path['source'] = 'file/' . $file->fid;
       // Core does not provide a way to store the file language but contrib
       // modules can do it so we need to take this into account.
       $langcode = entity_language('file', $file);
@@ -1971,4 +2410,160 @@ function path_file_update($file) {
 function path_file_delete($file) {
   // Delete all aliases associated with this file.
   path_delete(array('source' => 'file/' . $file->fid));
+}
+
+/**
+ * Checks if pattern(s) match mimetype(s).
+ */
+function file_entity_match_mimetypes($needle, $haystack) {
+  $needle = is_array($needle) ? $needle : array($needle);
+  $haystack = is_array($haystack) ? $haystack : array($haystack);
+
+  foreach ($haystack as $mimetype) {
+    foreach ($needle as $search) {
+      if (file_entity_fnmatch($search, $mimetype) || file_entity_fnmatch($mimetype, $search)) {
+        return TRUE;
+      }
+    }
+  }
+
+  return FALSE;
+}
+
+/**
+ * A wrapper function for the PHP function fnmatch().
+ *
+ * We include this, because Windows servers do not implement fnmatch() until
+ * PHP Version 5.3. See: http://php.net/manual/en/function.fnmatch.php
+ */
+function file_entity_fnmatch($pattern, $string) {
+  if (!function_exists('fnmatch')) {
+    return preg_match("#^" . strtr(preg_quote($pattern, '#'), array('\*' => '.*', '\?' => '.', '\[' => '[', '\]' => ']')) . "$#", $string);
+  }
+  return fnmatch($pattern, $string);
+}
+
+/**
+ * Return an URI for a file download.
+ */
+function file_entity_download_uri($file) {
+  $uri = array('path' => "file/{$file->fid}/download", 'options' => array());
+  if (!variable_get('file_entity_allow_insecure_download', FALSE)) {
+    $uri['options']['query']['token'] = file_entity_get_download_token($file);
+  }
+  return $uri;
+}
+
+function file_entity_file_get_mimetype_type($file) {
+  list($type, $subtype) = explode('/', $file->filemime, 2);
+  return $type;
+}
+
+/**
+ * Implements hook_admin_menu_map().
+ */
+function file_entity_admin_menu_map() {
+  if (!user_access('administer file types')) {
+    return;
+  }
+  $map['admin/structure/file-types/manage/%file_type'] = array(
+    'parent' => 'admin/structure/file-types',
+    'arguments' => array(
+      array('%file_type' => array_keys(file_entity_type_get_names())),
+    ),
+  );
+  return $map;
+}
+
+/*
+ * Generates a token to protect a file download URL.
+ *
+ * This prevents unauthorized crawling of all file download URLs since the
+ * {file_managed}.fid column is an auto-incrementing serial field and is easy
+ * to guess or attempt many at once. This can be costly both in CPU time
+ * and bandwidth.
+ *
+ * @see image_style_path_token()
+ *
+ * @param object $file
+ *   A file entity object.
+ *
+ * @return string
+ *   An eight-character token which can be used to protect file downloads
+ *   against denial-of-service attacks.
+ */
+function file_entity_get_download_token($file) {
+  // Return the first eight characters.
+  return substr(drupal_hmac_base64("file/$file->fid/download:" . $file->uri, drupal_get_private_key() . drupal_get_hash_salt()), 0, 8);
+}
+
+/**
+ * Find all fields that are of a certain field type.
+ *
+ * @param string $field_type
+ *   A field type.
+ *
+ * @return array
+ *   An array of field names that match the type $field_type.
+ */
+function _file_entity_get_fields_by_type($field_type) {
+  $return = array();
+  if (function_exists('field_info_field_map')) {
+    foreach (field_info_field_map() as $field_name => $field) {
+      if ($field['type'] == $field_type) {
+        $return[$field_name] = $field_name;
+      }
+    }
+  }
+  else {
+    foreach (field_info_fields() as $field_name => $field) {
+      if ($field['type'] == $field_type) {
+        $return[$field_name] = $field_name;
+      }
+    }
+  }
+  return $return;
+}
+
+/**
+ * Implements hook_field_attach_load().
+ */
+function file_entity_field_attach_load($entity_type, $entities, $age, $options) {
+  // Loop over all the entities looking for entities with attached images.
+  foreach ($entities as $entity) {
+    list(, , $bundle) = entity_extract_ids($entity_type, $entity);
+    // Examine every image field instance attached to this entity's bundle.
+    $instances = array_intersect_key(field_info_instances($entity_type, $bundle), _file_entity_get_fields_by_type('image'));
+    foreach ($instances as $field_name => $instance) {
+      if (!empty($entity->{$field_name})) {
+        foreach ($entity->{$field_name} as $langcode => $items) {
+          foreach ($items as $delta => $item) {
+            // If alt and title text is not specified, fall back to alt and
+            // title text on the file.
+            if (!empty($item['fid']) && (empty($item['alt']) || empty($item['title']))) {
+              $file = file_load($item['fid']);
+              foreach (array('alt', 'title') as $key) {
+                if (empty($item[$key]) && !empty($file->{$key})) {
+                  $entity->{$field_name}[$langcode][$delta][$key] = $file->{$key};
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+function file_entity_get_public_and_private_stream_wrapper_names($flag = STREAM_WRAPPERS_VISIBLE) {
+  $wrappers = array();
+  foreach (file_get_stream_wrappers($flag) as $key => $wrapper) {
+    if (empty($wrapper['private'])) {
+      $wrappers['public'][$key] = $wrapper['name'];
+    }
+    else {
+      $wrappers['private'][$key] = $wrapper['name'];
+    }
+  }
+  return $wrappers;
 }
