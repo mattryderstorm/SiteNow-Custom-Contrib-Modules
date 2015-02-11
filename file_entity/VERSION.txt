@@ -1,2 +1,0 @@
-Updated to commit http://drupalcode.org/project/file_entity.git/commit/fc857ee339d20cec710bb965471c05890bbc72ae
-on March 28, 2013
