@@ -136,7 +136,7 @@ function custom_breadcrumbs_identifiers_cb_identifier_values($identifier, $obj) 
       // Search for both alias and normal path.
       $normal_path = drupal_get_normal_path($path);
 
-      $menu_item = db_select('menu_links')->condition('link_path', array($path, $normal_path), 'IN')->execute()->fetch();
+      $menu_item = db_select('menu_links', 'ml')->fields('ml')->condition('link_path', array($path, $normal_path), 'IN')->execute()->fetch();
 
       if ($menu_item) {
         // Parent ids of menu item.
@@ -166,7 +166,7 @@ function custom_breadcrumbs_identifiers_cb_identifier_values($identifier, $obj) 
         }
 
         // Query parent items.
-        $result = db_select('menu_links')->condition('mlid', $pids, 'IN')->execute();
+        $result = db_select('menu_links', 'ml')->fields('ml')->condition('mlid', $pids, 'IN')->execute();
         $trail = array();
 
         foreach ($result as $item) {
