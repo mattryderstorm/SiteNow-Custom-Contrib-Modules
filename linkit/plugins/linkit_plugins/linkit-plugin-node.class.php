@@ -1,27 +1,31 @@
 <?php
 /**
  * @file
- * Define Linkit node search plugin class.
+ * Define Linkit node plugin class.
  */
-
-/**
- * Reprecents a Linkit node search plugin.
- */
-class LinkitSearchPluginNode extends LinkitSearchPluginEntity {
+class LinkitPluginNode extends LinkitPluginEntity {
 
   /**
-   * Overrides LinkitSearchPluginEntity::createRowClass().
-   *
-   * Adds an extra class if the node is unpublished.
+   * Returns a string which will be used as the search result label for this
+   * item.
    */
-  function createRowClass($entity) {
+  function buildLabel($entity) {
+    $label = parent::buildLabel($entity);
+    return $label;
+  }
+
+  /**
+   * Returns a string with CSS classes that will be added to the search result
+   * row for this item.
+   */
+  function buildRowClass($entity) {
     if ($this->conf['include_unpublished'] && $entity->status == NODE_NOT_PUBLISHED) {
       return 'unpublished-node';
     }
   }
 
   /**
-   * Overrides LinkitSearchPluginEntity::getQueryInstance().
+   * Start a new EntityFieldQuery instance.
    */
   function getQueryInstance() {
     // Call the parent getQueryInstance method.
@@ -33,7 +37,13 @@ class LinkitSearchPluginNode extends LinkitSearchPluginEntity {
   }
 
   /**
-   * Overrides LinkitSearchPlugin::buildSettingsForm().
+   * Generate a settings form for this handler.
+   * Uses the standard Drupal FAPI.
+   * The element will be attached to the "data" key.
+   *
+   * @return
+   *   An array containing any custom form elements to be displayed in the
+   *   profile editing form.
    */
   function buildSettingsForm() {
     // Get the parent settings form.
@@ -43,7 +53,6 @@ class LinkitSearchPluginNode extends LinkitSearchPluginEntity {
       '#title' => t('Include unpublished nodes'),
       '#type' => 'checkbox',
       '#default_value' => isset($this->conf['include_unpublished']) ? $this->conf['include_unpublished'] : 0,
-      '#description' => t('In order to see unpublished nodes, the user most also have permissions to do so. '),
     );
 
     return $form;
