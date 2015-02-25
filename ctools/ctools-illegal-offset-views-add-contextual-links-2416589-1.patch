@@ -1,0 +1,13 @@
+diff --git a/views_content/plugins/content_types/views_panes.inc b/views_content/plugins/content_types/views_panes.inc
+index dc61bca..e4dded2 100644
+--- a/views_content/plugins/content_types/views_panes.inc
++++ b/views_content/plugins/content_types/views_panes.inc
+@@ -265,7 +265,7 @@ function views_content_views_panes_content_type_render($subtype, $conf, $panel_a
+   if ($allow['fields_override']) {
+     if ($conf['fields_override']) {
+       $fields = $view->get_items('field');
+-      foreach ($fields as $field => $display) {
++      foreach ($fields as $field => $field_display) {
+         $fields[$field]['exclude'] = empty($conf['fields_override'][$field]);
+       }
+       $view->display_handler->set_option('fields', $fields);
