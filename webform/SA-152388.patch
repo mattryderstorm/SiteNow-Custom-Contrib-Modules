@@ -1,0 +1,105 @@
+From 1fafa726c9d5b7bdadf2442799b617d711668a32 Mon Sep 17 00:00:00 2001
+From: Dan Chadwick
+Date: Tue, 03 Mar 2015 17:42:06 +0000
+Subject: Issue #152388 by DanChadwick: Improve handling of plain format for view row plugin and submission data handler.
+
+---
+diff --git a/views/default_views/webform_results.inc b/views/default_views/webform_results.inc
+index a376a30..47c0fd9 100644
+--- a/views/default_views/webform_results.inc
++++ b/views/default_views/webform_results.inc
+@@ -129,7 +129,7 @@ $handler->display->display_options['fields']['webform_all_fields']['field'] = 'w
+ $handler->display->display_options['fields']['webform_all_fields']['label'] = '';
+ $handler->display->display_options['fields']['webform_all_fields']['exclude'] = TRUE;
+ $handler->display->display_options['fields']['webform_all_fields']['alter']['nl2br'] = TRUE;
+-
++$handler->display->display_options['fields']['webform_all_fields']['format'] = 'text';
+ /* Contextual filter: Webform submissions: Node */
+ $handler->display->display_options['arguments']['nid']['id'] = 'nid';
+ $handler->display->display_options['arguments']['nid']['table'] = 'webform_submissions';
+diff --git a/views/webform.views.inc b/views/webform.views.inc
+index 209497d..5048e11 100644
+--- a/views/webform.views.inc
++++ b/views/webform.views.inc
+@@ -501,8 +501,7 @@ function webform_views_pre_view($view, $display_id, $args) {
+             'id' => $new_id,
+             'field' => 'value',
+             'table' => 'webform_submissions',
+-            'label' => $component['name'], // CHECK FOR XSS TODO
+-            'format' => 'plain',
++            'label' => $component['name'],
+             'webform_nid' => $node->nid,
+             'webform_cid' => $component['cid'],
+             'exclude' => 0,
+diff --git a/views/webform_handler_field_submission_data.inc b/views/webform_handler_field_submission_data.inc
+index 4df2211..872aeb2 100644
+--- a/views/webform_handler_field_submission_data.inc
++++ b/views/webform_handler_field_submission_data.inc
+@@ -67,7 +67,7 @@ class webform_handler_field_submission_data extends views_handler_field {
+       '#title' => t('Display format'),
+       '#options' => array(
+         'html' => t('HTML'),
+-        'plain' => t('Plain text'),
++        'text' => t('Plain text'),
+       ),
+       '#default_value' => $this->options['format'],
+     );
+@@ -201,16 +201,19 @@ class webform_handler_field_submission_data extends views_handler_field {
+         // whereas $component refers to the submission component.
+       }
+ 
+-      $render = array();
+-      $format = $this->options['format'];
+-
+-      _webform_client_form_add_component($webform, $component, NULL, $render, $render, $submission->data, $format);
+-      $render = $render[$component['form_key']];
+-
+-      // Remove display label.
+-      $render['#theme_wrappers'] = array();
+-
+-      return render($render);
++      if ($this->options['format'] == 'html') {
++        $render = array();
++        _webform_client_form_add_component($webform, $component, NULL, $render, $render, $submission->data, 'html');
++        $render = $render[$component['form_key']];
++        // Remove display label.
++        $render['#theme_wrappers'] = array();
++      }
++      else {
++        // Plain text format is generated via invoking the table output to ensure output is sanitised.
++        $data = isset($submission->data[$component['cid']]) ? $submission->data[$component['cid']] : NULL;
++        $render = webform_component_invoke($component['type'], 'table', $component, $data);
++      }
++      return $render;
+     }
+   }
+ }
+diff --git a/views/webform_plugin_row_submission_view.inc b/views/webform_plugin_row_submission_view.inc
+index 1437b4d..f964a4d 100644
+--- a/views/webform_plugin_row_submission_view.inc
++++ b/views/webform_plugin_row_submission_view.inc
+@@ -76,9 +76,9 @@ class webform_views_plugin_row_submission_view extends views_plugin_row {
+     if (isset($this->submissions[$row->{$this->field_alias}])) {
+       $submission = $this->submissions[$row->{$this->field_alias}];
+       $node = $this->nodes[$submission->nid];
+-
+       $submission->view = $this->view;
+-      $build = webform_submission_render($node, $submission, NULL, $this->options['format']);
++      $format = $this->options['format'];
++      $build = webform_submission_render($node, $submission, NULL, $format);
+ 
+       // Add extra theme functions:
+       $themes = array();
+@@ -87,7 +87,9 @@ class webform_views_plugin_row_submission_view extends views_plugin_row {
+       }
+       $build['#theme'] = $themes;
+ 
+-      return drupal_render($build);
++      // Render built submission, and if unsanitized plain text is used, make it safe for display.
++      $render = drupal_render($build);
++      return $format == 'html' ? $render : nl2br(check_plain($render));
+     }
+   }
+ }
+--
+cgit v0.9.2
