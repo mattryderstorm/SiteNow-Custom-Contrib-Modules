@@ -472,8 +472,7 @@ function webform_views_pre_view($view, $display_id, $args) {
             'id' => $new_id,
             'field' => 'value',
             'table' => 'webform_submissions',
-            'label' => $component['name'], // CHECK FOR XSS TODO
-            'format' => 'plain',
+            'label' => $component['name'],
             'webform_nid' => $node->nid,
             'webform_cid' => $component['cid'],
             'exclude' => 0,
@@ -498,7 +497,9 @@ function webform_views_pre_view($view, $display_id, $args) {
     $display->handler->set_option('fields', $fields);
 
     // If this display's style is a table, add columns for click-sorting.
-    if ($display->handler->get_option('style_plugin') == 'table') {
+    // Note: Test for count($new_columns) is necessary because prior to PHP 5.6,
+    // array_fill requires a positve number of elements to insert.
+    if ($display->handler->get_option('style_plugin') == 'table' && count($new_columns)) {
       $style_options = $display->handler->get_option('style_options');
       $style_options['columns'] += $new_columns;
       $style_prototype = isset($style_options['info'][$all_fields_id])
@@ -512,12 +513,6 @@ function webform_views_pre_view($view, $display_id, $args) {
         'empty_column' => 0,
       );
       $style_options['info'] += array_combine($new_columns, array_fill(1, count($new_columns), $style_prototype));
-      
-      //
-      //$key_index = array_flip(array_keys($columns));
-      //$offset = isset($key_index[$id]) ? $key_index[$id] : count($columns);
-      //$columns = array_slice($columns, 0, $offset, TRUE) + $new_columns + array_slice($columns, $offset, NULL, TRUE);
-      // Drop PHP Reference.
       $display->handler->set_option('style_options', $style_options);
     }
 
